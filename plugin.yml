@@ -1,0 +1,90 @@
+name: argocd_deployment
+description: Deploy and rollback ArgoCD applications with Buildkite
+author: https://github.com/Mykematt
+main: hooks.command
+version: v1.0.0
+api: v1
+requirements:
+  - argocd
+  - bash
+configuration:
+  properties:
+    app:
+      type: string
+      description: "ArgoCD application name"
+    mode:
+      type: string
+      description: "Operation mode: deploy or rollback"
+      default: "deploy"
+      enum: ["deploy", "rollback"]
+    rollback_mode:
+      type: string
+      description: "Rollback mode: auto or manual"
+      default: "auto"
+      enum: ["auto", "manual"]
+    timeout:
+      type: number
+      description: "Timeout in seconds for ArgoCD operations"
+      default: 300
+      minimum: 30
+      maximum: 3600
+    health_check_enabled:
+      type: boolean
+      description: "Enable health monitoring via ArgoCD API"
+      default: true
+    health_check_interval:
+      type: number
+      description: "Health check interval in seconds"
+      default: 30
+      minimum: 10
+      maximum: 300
+    health_check_timeout:
+      type: number
+      description: "Health check timeout in seconds"
+      default: 300
+      minimum: 60
+      maximum: 1800
+    collect_logs:
+      type: boolean
+      description: "Collect application logs on deployment"
+      default: true
+    log_lines:
+      type: number
+      description: "Number of log lines to collect"
+      default: 1000
+      minimum: 100
+      maximum: 10000
+    upload_artifacts:
+      type: boolean
+      description: "Upload logs and deployment artifacts"
+      default: true
+    manual_rollback_block:
+      type: boolean
+      description: "Add manual rollback block step"
+      default: false
+    block_timeout:
+      type: number
+      description: "Manual block timeout in minutes"
+      default: 60
+      minimum: 5
+      maximum: 1440
+    notifications:
+      type: object
+      description: "Notification settings for rollback events"
+      properties:
+        slack_webhook:
+          type: string
+          description: "Slack webhook URL for notifications"
+        email:
+          type: string
+          description: "Email address for notifications"
+        webhook_url:
+          type: string
+          description: "Custom webhook URL for notifications"
+        pagerduty_integration_key:
+          type: string
+          description: "PagerDuty integration key"
+      additionalProperties: false
+  required:
+    - app
+  additionalProperties: false
