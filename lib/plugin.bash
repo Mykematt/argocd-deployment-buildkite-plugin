@@ -184,7 +184,8 @@ create_deployment_log() {
     local app_name="$1"
     local operation="$2"
     local result="$3"
-    local log_file="deployment-${app_name}-$(date +%Y%m%d-%H%M%S).log"
+    local log_file
+    log_file="deployment-${app_name}-$(date +%Y%m%d-%H%M%S).log"
     
     {
         echo "=== ArgoCD Deployment Log ==="

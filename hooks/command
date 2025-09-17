@@ -204,7 +204,7 @@ monitor_application_health() {
     local health_check_interval
     local health_check_timeout
     
-    health_check_enabled=$(plugin_read_config HEALTH_CHECK_ENABLED "true")
+    health_check_enabled=$(plugin_read_config HEALTH_CHECK "true")
     health_check_interval=$(plugin_read_config HEALTH_CHECK_INTERVAL "30")
     health_check_timeout=$(plugin_read_config HEALTH_CHECK_TIMEOUT "300")
     
@@ -328,38 +328,6 @@ send_rollback_notification() {
             --data "$payload" \
             'https://events.pagerduty.com/v2/enqueue' || echo "⚠️  Failed to send PagerDuty alert"
     fi
-}
-
-# Annotation functions
-create_deployment_annotation() {
-    local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
-    local result="$4"
-    
-    local status_emoji
-    case "$result" in
-        "success") status_emoji="✅" ;;
-        "failed") status_emoji="❌" ;;
-        *) status_emoji="❓" ;;
-    esac
-    
-    local annotation="$status_emoji **ArgoCD Deployment**\n\n"
-    annotation+="**Application:** $app_name\n"
-    annotation+="**Status:** $result\n"
-    annotation+="**From:** \`$from_revision\`\n"
-    annotation+="**To:** \`$to_revision\`\n"
-    annotation+="**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})\n"
-    annotation+="**Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}\n"
-    annotation+="**Branch:** ${BUILDKITE_BRANCH:-unknown}\n"
-    
-    buildkite-agent annotate "$annotation" --style "$([[ "$result" == "success" ]] && echo "success" || echo "error")" --context "argocd-deployment-$app_name" || true
-}
-
-create_rollback_annotation() {
-    local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
     
     local annotation="🔄 **ArgoCD Rollback**\n\n"
     annotation+="**Application:** $app_name\n"
@@ -373,6 +341,40 @@ create_rollback_annotation() {
     
     # Send rollback notification
     send_rollback_notification "$app_name" "$from_revision" "$to_revision" "Automatic rollback triggered"
+}
+
+create_deployment_annotation() {
+    local app_name="$1"
+    local previous_version="$2"
+    local current_version="$3"
+    local deployment_result="$4"
+    
+    local annotation
+    case "$deployment_result" in
+        "success")
+            annotation="✅ **ArgoCD Deployment Successful**\n\n"
+            annotation+="**Application:** $app_name\n"
+            annotation+="**Previous Version:** $previous_version\n"
+            annotation+="**Current Version:** $current_version\n"
+            annotation+="**Status:** $deployment_result\n"
+            annotation+="**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')\n"
+            ;;
+        "failed")
+            annotation="❌ **ArgoCD Deployment Failed**\n\n"
+            annotation+="**Application:** $app_name\n"
+            annotation+="**Status:** $deployment_result\n"
+            annotation+="**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')\n"
+            ;;
+    esac
+    
+    local style
+    if [[ "$deployment_result" == "success" ]]; then
+        style="success"
+    else
+        style="error"
+    fi
+    
+    buildkite-agent annotate "$annotation" --style "$style" --context "argocd-deployment-$app_name" || true
 }
 
 handle_log_collection_and_artifacts() {

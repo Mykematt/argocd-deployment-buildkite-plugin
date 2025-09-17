@@ -28,7 +28,7 @@ configuration:
       default: 300
       minimum: 30
       maximum: 3600
-    health_check_enabled:
+    health_check:
       type: boolean
       description: "Enable health monitoring via ArgoCD API"
       default: true

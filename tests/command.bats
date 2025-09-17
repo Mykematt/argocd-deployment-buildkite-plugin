@@ -3,154 +3,117 @@
 setup() {
   load "${BATS_PLUGIN_PATH}/load.bash"
 
-  # Uncomment to enable stub debugging
-  # export CURL_STUB_DEBUG=/dev/tty
-
-  # you can set variables common to all tests here
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_MANDATORY='Value'
+  # Mock argocd CLI for tests
+  export PATH="$PWD/tests/mocks:$PATH"
+  
+  # Create mock argocd command
+  mkdir -p tests/mocks
+  cat > tests/mocks/argocd << 'EOF'
+#!/bin/bash
+case "$1" in
+  "version") echo "argocd: v2.8.0" ;;
+  "context") echo "current" ;;
+  "account") echo "admin" ;;
+  "app") 
+    case "$2" in
+      "get") echo '{"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}' ;;
+      "sync") echo "Operation initiated" ;;
+      "rollback") echo "Rollback initiated" ;;
+    esac
+    ;;
+  *) echo "Unknown command" ;;
+esac
+EOF
+  chmod +x tests/mocks/argocd
 }
 
-@test "Missing mandatory option fails" {
-  unset BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_MANDATORY
+@test "Missing app name fails" {
+  run "$PWD"/hooks/command
+
+  assert_failure
+  assert_output --partial 'Error: app is required'
+}
+
+@test "Deploy mode with app name succeeds" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MODE='deploy'
+
+  run "$PWD"/hooks/command
+
+  assert_success
+  assert_output --partial 'Starting deployment for ArgoCD application: test-app'
+}
+
+@test "Rollback mode with app name succeeds" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MODE='rollback'
+
+  run "$PWD"/hooks/command
+
+  assert_success
+  assert_output --partial 'Starting rollback for ArgoCD application: test-app'
+}
+
+@test "Invalid mode fails" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MODE='invalid'
 
   run "$PWD"/hooks/command
 
   assert_failure
-  assert_output --partial 'Missing mandatory option'
-  refute_output --partial 'Running plugin'
+  assert_output --partial 'Error: mode must be either deploy or rollback'
 }
 
-@test "Normal basic operations" {
+@test "Timeout validation succeeds" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_TIMEOUT='300'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- mandatory: Value'
 }
 
-@test "Optional value changes bejaviour" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_OPTIONAL='other value'
+@test "Health monitoring can be enabled" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_HEALTH_CHECK='true'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- optional: other value'
 }
 
-@test "Numbers array processing" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_0='1'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_1='2'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_2='3'
+@test "Log collection can be enabled" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_COLLECT_LOGS='true'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- numbers: 1, 2, 3'
 }
 
-@test "Enabled boolean feature toggle" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_ENABLED='true'
+@test "Artifact upload can be enabled" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_UPLOAD_ARTIFACTS='true'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: true'
 }
 
-@test "Config object with nested properties" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_HOST='example.com'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_PORT='8080'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_SSL='true'
+@test "Manual rollback block can be enabled" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MANUAL_ROLLBACK_BLOCK='true'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- config.host: example.com'
-  assert_output --partial '- config.port: 8080'
-  assert_output --partial '- config.ssl: true'
 }
 
-@test "Timeout number validation" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='30'
+@test "Notifications can be configured" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_NOTIFICATIONS_SLACK_WEBHOOK='https://hooks.slack.com/test'
 
   run "$PWD"/hooks/command
 
   assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- timeout: 30'
-}
-
-@test "Timeout exceeds maximum fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='100'
-
-  run "$PWD"/hooks/command
-
-  assert_failure
-  assert_output --partial 'Error: timeout must be between 1 and 60 seconds'
-  refute_output --partial 'Running plugin with options'
-}
-
-@test "Timeout below minimum fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='0'
-
-  run "$PWD"/hooks/command
-
-  assert_failure
-  assert_output --partial 'Error: timeout must be between 1 and 60 seconds'
-  refute_output --partial 'Running plugin with options'
-}
-
-@test "Shows default values when not specified" {
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: false'
-}
-
-@test "Config with only required host field" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_HOST='test.com'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- config.host: test.com'
-  assert_output --partial '- config.port: 1234'
-  assert_output --partial '- config.ssl: true'
-}
-
-@test "Handles missing numbers array gracefully" {
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  refute_output --partial '- numbers:'
-}
-
-@test "Enabled boolean set to false explicitly" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_ENABLED='false'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: false'
-}
-
-@test "Numbers array with non-numeric element fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_0='1'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_1='abc'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_2='3'
-
-  run "$PWD"/hooks/command
-
-  assert_failure
-  assert_output --partial 'Error: numbers array contains non-numeric value: abc'
-  refute_output --partial 'Running plugin with options'
 }

@@ -47,7 +47,7 @@ Rollback mode when `mode` is `"rollback"`. Defaults to `"auto"`.
 
 Timeout in seconds for ArgoCD operations. Defaults to `300`. Must be between 30 and 3600 seconds.
 
-#### `health_check_enabled` (boolean)
+#### `health_check` (boolean)
 
 Enable health monitoring via ArgoCD API. Defaults to `true`.
 
@@ -176,20 +176,14 @@ Full configuration with all options:
 
 ```yaml
 steps:
-  - label: "🚀 Advanced Deployment"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
+  - plugins:
+      - argocd_deployment#v1.0.0:
           app: "my-application"
           mode: "deploy"
-          timeout: 600
-          health_check_enabled: true
-          health_check_interval: 45
-          health_check_timeout: 900
+          timeout: 300
+          health_check: true
           collect_logs: true
-          log_lines: 2000
           upload_artifacts: true
-          manual_rollback_block: true
-          block_timeout: 60
           notifications:
             slack_webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
             email: "devops@company.com"
