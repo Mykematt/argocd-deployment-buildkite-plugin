@@ -29,37 +29,25 @@ validate_config() {
     local mode="$2"
     local rollback_mode="$3"
     
-    # Validate app name
     if [[ -z "$app_name" ]]; then
         echo "❌ Error: app parameter is required"
         exit 1
     fi
     
-    # Validate timeout
-    local timeout
-    timeout=$(plugin_read_config TIMEOUT "300")
-    if [[ ! "$timeout" =~ ^[0-9]+$ ]]; then
-        echo "❌ Error: timeout must be a number"
+    if [[ "$mode" != "deploy" && "$mode" != "rollback" ]]; then
+        echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
         exit 1
     fi
     
-    if [[ "$timeout" -lt 30 ]]; then
-        echo "❌ Error: timeout must be at least 30 seconds"
-        exit 1
-    fi
-    
-    if [[ "$timeout" -gt 3600 ]]; then
-        echo "❌ Error: timeout must not exceed 3600 seconds (1 hour)"
-        exit 1
-    fi
-    
-    # Validate rollback mode for rollback operations
+    # Validate rollback_mode only for rollback operations
     if [[ "$mode" == "rollback" ]]; then
         if [[ "$rollback_mode" != "auto" && "$rollback_mode" != "manual" ]]; then
-            echo "❌ Error: rollback_mode must be 'auto' or 'manual'"
+            echo "❌ Error: Invalid rollback_mode '$rollback_mode'. Must be 'auto' or 'manual'"
             exit 1
         fi
     fi
+    
+    echo "✅ Configuration validated"
 }
 
 check_argocd_connectivity() {

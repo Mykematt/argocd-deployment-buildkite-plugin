@@ -2,13 +2,22 @@
 case "$1" in
   "version") echo "argocd: v2.8.0" ;;
   "context") echo "current" ;;
-  "account") echo "admin" ;;
-  "app") 
+  "app")
     case "$2" in
-      "get") echo '{"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}' ;;
-      "sync") echo "Operation initiated" ;;
-      "rollback") echo "Rollback initiated" ;;
+      "get") 
+        # Always return healthy status for tests
+        echo '{"metadata":{"name":"test-app"},"status":{"sync":{"revision":"abc123"},"health":{"status":"Healthy"},"operationState":{"phase":"Succeeded"}}}'
+        ;;
+      "sync") 
+        echo "Synced successfully"
+        exit 0
+        ;;
+      "rollback") 
+        echo "Rolled back successfully"
+        exit 0
+        ;;
+      *) echo "app: $*" ;;
     esac
     ;;
-  *) echo "Unknown command" ;;
+  *) echo "argocd: $*" ;;
 esac

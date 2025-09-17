@@ -31,7 +31,10 @@ main() {
             deploy_application "$app_name"
             ;;
         "rollback")
-            rollback_application "$app_name" "$rollback_mode"
+            # For explicit rollback mode, get previous version from metadata
+            local previous_revision
+            previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version")
+            execute_rollback "$app_name" "$previous_revision" "" "$rollback_mode"
             ;;
         *)
             echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
@@ -85,67 +88,88 @@ deploy_application() {
         # Create annotation
         create_deployment_annotation "$app_name" "$current_revision" "$new_revision" "success"
         
+        # Check application health if enabled
+        if ! monitor_application_health "$app_name"; then
+            echo "🚨 Health check failed after deployment"
+            handle_deployment_failure "$app_name" "auto" "$current_revision" "$log_file" "health_check_failed"
+            return
+        fi
+        
         # Collect logs and upload artifacts if enabled
         handle_log_collection_and_artifacts "$app_name" "$log_file"
-        
-        # Inject manual rollback block step if enabled
-        inject_manual_rollback_block "$app_name"
         
         echo "✅ Deployment successful"
         echo "   Previous: $current_revision"
         echo "   Current:  $new_revision"
     else
-        # Update metadata with failure
-        set_metadata "deployment:argocd:${app_name}:result" "failed"
-        set_metadata "deployment:argocd:${app_name}:status" "failed"
+        echo "🚨 Deployment sync failed"
+        handle_deployment_failure "$app_name" "auto" "$current_revision" "$log_file" "deployment_failed"
+    fi
+}
+
+handle_deployment_failure() {
+    local app_name="$1"
+    local rollback_mode="$2"
+    local previous_revision="$3"
+    local log_file="$4"
+    local failure_reason="$5"
+    
+    # Update metadata with failure
+    set_metadata "deployment:argocd:${app_name}:result" "failed"
+    set_metadata "deployment:argocd:${app_name}:status" "failed"
+    set_metadata "deployment:argocd:${app_name}:failure_reason" "$failure_reason"
+    
+    # Update log with failure
+    echo "=== Deployment Result: FAILED - $failure_reason ===" >> "$log_file"
+    
+    # Create failure annotation
+    create_deployment_annotation "$app_name" "$previous_revision" "$previous_revision" "failed"
+    
+    # Handle rollback based on mode
+    if [[ "$rollback_mode" == "auto" ]]; then
+        echo "🤖 Auto rollback mode: initiating automatic rollback..."
+        execute_rollback "$app_name" "$previous_revision" "$log_file" "auto"
+    elif [[ "$rollback_mode" == "manual" ]]; then
+        echo "📋 Manual rollback mode: injecting block step for user decision..."
+        inject_rollback_decision_block "$app_name" "$previous_revision"
         
-        # Update log with failure
-        echo "=== Deployment Result: FAILED ===" >> "$log_file"
-        
-        create_deployment_annotation "$app_name" "$current_revision" "$current_revision" "failed"
-        
-        # Collect logs and upload artifacts even on failure
+        # Collect logs and upload artifacts for manual review
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
-        echo "❌ Deployment failed"
+        # Send notification about failure
+        send_rollback_notification "$app_name" "current" "$previous_revision" "$failure_reason"
+        
+        echo "⏸️  Pipeline paused for manual rollback decision"
+    else
+        echo "❌ Unknown rollback mode: $rollback_mode"
+        handle_log_collection_and_artifacts "$app_name" "$log_file"
         exit 1
     fi
 }
 
-rollback_application() {
+execute_rollback() {
     local app_name="$1"
-    local rollback_mode="$2"
+    local rollback_revision="$2"
+    local rollback_type="$4"
     
-    echo "🔄 Starting rollback for ArgoCD application: $app_name"
+    echo "🔄 Starting $rollback_type rollback for ArgoCD application: $app_name"
     
     # Create rollback log
-    local log_file
-    log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
+    local rollback_log_file
+    rollback_log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
     
-    # Get current revision
+    # Get current (failed) revision
     local current_revision
     current_revision=$(get_current_revision "$app_name")
     
-    # Get previous version from metadata
-    local previous_revision
-    previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version")
-    
-    if [[ -z "$previous_revision" ]]; then
-        echo "❌ Error: No previous version found in metadata"
-        echo "=== Rollback Result: FAILED - No previous version ===" >> "$log_file"
-        handle_log_collection_and_artifacts "$app_name" "$log_file"
+    if [[ -z "$rollback_revision" ]]; then
+        echo "❌ Error: No previous version available for rollback"
+        echo "=== Rollback Result: FAILED - No previous version ===" >> "$rollback_log_file"
+        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
         exit 1
     fi
     
-    local rollback_revision
-    if [[ "$rollback_mode" == "manual" ]]; then
-        rollback_revision="$previous_revision"
-        echo "📋 Manual rollback to revision: $rollback_revision"
-    else
-        # Auto rollback - use previous version
-        rollback_revision="$previous_revision"
-        echo "🤖 Auto rollback to revision: $rollback_revision"
-    fi
+    echo "⏪ Rolling back from $current_revision to $rollback_revision..."
     
     # Store rollback metadata
     set_metadata "deployment:argocd:${app_name}:rollback_from" "$current_revision"
@@ -156,12 +180,11 @@ rollback_application() {
     local timeout
     timeout=$(plugin_read_config TIMEOUT "300")
     
-    echo "⏪ Rolling back ArgoCD application..."
     {
         echo "=== Rollback Command Output ==="
         argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout" 2>&1
         echo "Exit code: $?"
-    } >> "$log_file"
+    } >> "$rollback_log_file"
     
     if argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout"; then
         # Update metadata with success
@@ -170,13 +193,16 @@ rollback_application() {
         set_metadata "deployment:argocd:${app_name}:status" "rolled_back"
         
         # Update log with success
-        echo "=== Rollback Result: SUCCESS ===" >> "$log_file"
-        echo "Rolled back to revision: $rollback_revision" >> "$log_file"
+        echo "=== Rollback Result: SUCCESS ===" >> "$rollback_log_file"
+        echo "Rolled back to revision: $rollback_revision" >> "$rollback_log_file"
         
         create_rollback_annotation "$app_name" "$current_revision" "$rollback_revision"
         
         # Collect logs and upload artifacts
-        handle_log_collection_and_artifacts "$app_name" "$log_file"
+        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
+        
+        # Send success notification
+        send_rollback_notification "$app_name" "$current_revision" "$rollback_revision" "automatic_recovery"
         
         echo "✅ Rollback successful"
         echo "   Failed:     $current_revision"
@@ -187,10 +213,13 @@ rollback_application() {
         set_metadata "deployment:argocd:${app_name}:status" "rollback_failed"
         
         # Update log with failure
-        echo "=== Rollback Result: FAILED ===" >> "$log_file"
+        echo "=== Rollback Result: FAILED ===" >> "$rollback_log_file"
         
         # Collect logs and upload artifacts even on failure
-        handle_log_collection_and_artifacts "$app_name" "$log_file"
+        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
+        
+        # Send failure notification
+        send_rollback_notification "$app_name" "$current_revision" "$rollback_revision" "rollback_failed"
         
         echo "❌ Rollback failed"
         exit 1
@@ -483,6 +512,55 @@ EOF
         
         echo "$pipeline_yaml" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject manual rollback block"
     fi
+}
+
+inject_rollback_decision_block() {
+    local app_name="$1"
+    local previous_revision="$2"
+    
+    echo "📋 Injecting rollback decision block step..."
+    
+    local pipeline_yaml
+    pipeline_yaml=$(cat <<EOF
+steps:
+  - block: ":warning: Deployment Failed - Rollback Decision"
+    prompt: "Deployment failed for $app_name. What would you like to do?"
+    fields:
+      - select: "Action"
+        key: "rollback_action"
+        options:
+          - label: "Keep Current (Failed) Deployment"
+            value: "keep"
+          - label: "Rollback to Previous Version ($previous_revision)"
+            value: "rollback"
+    timeout_in_minutes: 60
+    
+  - label: ":arrow_backward: Execute Manual Rollback"
+    command: |
+      echo "Executing manual rollback for $app_name to $previous_revision..."
+      # Set environment for rollback execution
+      export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP="$app_name"
+      export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ROLLBACK_MODE="manual"
+      
+      # Execute rollback directly
+      $(dirname "\$0")/execute_manual_rollback.sh "$app_name" "$previous_revision"
+    depends_on:
+      - step: ":warning: Deployment Failed - Rollback Decision"
+        allow_failure: false
+    if: 'build.meta_data.get("rollback_action") == "rollback"'
+    
+  - label: ":x: Keep Failed Deployment"
+    command: |
+      echo "User chose to keep the failed deployment for $app_name"
+      echo "Manual intervention may be required"
+    depends_on:
+      - step: ":warning: Deployment Failed - Rollback Decision"
+        allow_failure: false
+    if: 'build.meta_data.get("rollback_action") == "keep"'
+EOF
+        )
+        
+        echo "$pipeline_yaml" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject rollback decision block"
 }
 
 get_plugin_reference() {
