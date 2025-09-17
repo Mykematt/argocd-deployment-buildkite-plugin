@@ -1,2 +1,8 @@
 .vscode
 node_modules
+tests/mocks/buildkite-agent
+
+# Test artifacts and logs
+deployment-*.log
+argocd-logs/
+*.log
