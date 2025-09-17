@@ -1,0 +1,16 @@
+=== ArgoCD Deployment Log ===
+Application: test-app
+Operation: rollback
+Result: in_progress
+Timestamp: 2025-09-17T00:47:43Z
+Build: unknown
+Pipeline: unknown
+Branch: unknown
+Commit: unknown
+
+=== Operation Output ===
+=== Rollback Command Output ===
+Rollback initiated
+Exit code: 0
+=== Rollback Result: SUCCESS ===
+Rolled back to revision: test-value

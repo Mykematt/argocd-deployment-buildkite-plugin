@@ -106,26 +106,26 @@ collect_app_logs() {
     
     mkdir -p "$log_dir"
     
-    echo "📋 Collecting ArgoCD application logs..."
+    echo "📋 Collecting ArgoCD application logs..." >&2
     
     # Get application resources
     if argocd app get "$app_name" --output json > "$log_dir/${app_name}-app-details.json" 2>/dev/null; then
-        echo "✅ Collected application details"
+        echo "✅ Collected application details" >&2
     fi
     
     # Get application manifests
     if argocd app manifests "$app_name" > "$log_dir/${app_name}-manifests.yaml" 2>/dev/null; then
-        echo "✅ Collected application manifests"
+        echo "✅ Collected application manifests" >&2
     fi
     
     # Get application events
     if argocd app get "$app_name" --show-events > "$log_dir/${app_name}-events.txt" 2>/dev/null; then
-        echo "✅ Collected application events"
+        echo "✅ Collected application events" >&2
     fi
     
     # Try to get pod logs if kubectl is available
     if command -v kubectl &> /dev/null; then
-        echo "🔍 Attempting to collect pod logs..."
+        echo "🔍 Attempting to collect pod logs..." >&2
         
         # Get namespace from ArgoCD app
         local namespace
@@ -144,7 +144,7 @@ collect_app_logs() {
                 pod_name=$(echo "$pod_line" | awk '{print $1}')
                 
                 if [[ -n "$pod_name" ]]; then
-                    echo "📋 Collecting logs for pod: $pod_name"
+                    echo "📋 Collecting logs for pod: $pod_name" >&2
                     kubectl logs -n "$namespace" "$pod_name" --tail="$log_lines" > "$log_dir/${app_name}-${pod_name}.log" 2>/dev/null || true
                     
                     # Get previous logs if pod restarted
@@ -154,12 +154,12 @@ collect_app_logs() {
         done < <(kubectl get pods -n "$namespace" -l "app.kubernetes.io/instance=$app_label" --no-headers 2>/dev/null || true)
         
         if [[ "$pods_found" == "true" ]]; then
-            echo "✅ Pod logs collected"
+            echo "✅ Pod logs collected" >&2
         else
-            echo "⚠️  Could not collect pod logs (kubectl not available or no pods found)"
+            echo "⚠️  Could not collect pod logs (kubectl not available or no pods found)" >&2
         fi
     else
-        echo "⚠️  kubectl not available, skipping pod log collection"
+        echo "⚠️  kubectl not available, skipping pod log collection" >&2
     fi
     
     echo "$log_dir"

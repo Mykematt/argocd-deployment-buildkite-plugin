@@ -1,0 +1,21 @@
+#!/bin/bash
+case "$1" in
+  "meta-data")
+    case "$2" in
+      "set") echo "Setting metadata: $3 = $4" ;;
+      "get") echo "test-value" ;;
+    esac
+    ;;
+  "annotate") echo "Creating annotation: $2" ;;
+  "artifact")
+    case "$2" in
+      "upload") echo "Uploading artifact: $3" ;;
+    esac
+    ;;
+  "pipeline")
+    case "$2" in
+      "upload") echo "Uploading pipeline step" ;;
+    esac
+    ;;
+  *) echo "buildkite-agent: $*" ;;
+esac

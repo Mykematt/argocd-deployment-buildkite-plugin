@@ -377,6 +377,22 @@ create_deployment_annotation() {
     buildkite-agent annotate "$annotation" --style "$style" --context "argocd-deployment-$app_name" || true
 }
 
+create_rollback_annotation() {
+    local app_name="$1"
+    local from_revision="$2"
+    local to_revision="$3"
+    
+    local annotation="🔄 **ArgoCD Rollback**\n\n"
+    annotation+="**Application:** $app_name\n"
+    annotation+="**Failed Revision:** \`$from_revision\`\n"
+    annotation+="**Rolled Back To:** \`$to_revision\`\n"
+    annotation+="**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})\n"
+    annotation+="**Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}\n"
+    annotation+="**Branch:** ${BUILDKITE_BRANCH:-unknown}\n"
+    
+    buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
+}
+
 handle_log_collection_and_artifacts() {
     local app_name="$1"
     local deployment_log_file="$2"

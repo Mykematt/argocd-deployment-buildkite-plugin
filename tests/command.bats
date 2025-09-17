@@ -25,13 +25,39 @@ case "$1" in
 esac
 EOF
   chmod +x tests/mocks/argocd
+  
+  # Create mock buildkite-agent command
+  cat > tests/mocks/buildkite-agent << 'EOF'
+#!/bin/bash
+case "$1" in
+  "meta-data")
+    case "$2" in
+      "set") echo "Setting metadata: $3 = $4" ;;
+      "get") echo "test-value" ;;
+    esac
+    ;;
+  "annotate") echo "Creating annotation: $2" ;;
+  "artifact")
+    case "$2" in
+      "upload") echo "Uploading artifact: $3" ;;
+    esac
+    ;;
+  "pipeline")
+    case "$2" in
+      "upload") echo "Uploading pipeline step" ;;
+    esac
+    ;;
+  *) echo "buildkite-agent: $*" ;;
+esac
+EOF
+  chmod +x tests/mocks/buildkite-agent
 }
 
 @test "Missing app name fails" {
   run "$PWD"/hooks/command
 
   assert_failure
-  assert_output --partial 'Error: app is required'
+  assert_output --partial 'Error: app parameter is required'
 }
 
 @test "Deploy mode with app name succeeds" {
@@ -61,7 +87,7 @@ EOF
   run "$PWD"/hooks/command
 
   assert_failure
-  assert_output --partial 'Error: mode must be either deploy or rollback'
+  assert_output --partial "Error: Invalid mode 'invalid'. Must be 'deploy' or 'rollback'"
 }
 
 @test "Timeout validation succeeds" {

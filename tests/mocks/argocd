@@ -1,0 +1,14 @@
+#!/bin/bash
+case "$1" in
+  "version") echo "argocd: v2.8.0" ;;
+  "context") echo "current" ;;
+  "account") echo "admin" ;;
+  "app") 
+    case "$2" in
+      "get") echo '{"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}' ;;
+      "sync") echo "Operation initiated" ;;
+      "rollback") echo "Rollback initiated" ;;
+    esac
+    ;;
+  *) echo "Unknown command" ;;
+esac
