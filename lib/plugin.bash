@@ -3,12 +3,59 @@ set -euo pipefail
 
 PLUGIN_PREFIX="ARGOCD_DEPLOYMENT"
 
+# Installation functions
+install_argocd_cli() {
+    echo "📦 Installing ArgoCD CLI..."
+    
+    # Detect OS and architecture
+    local os
+    local arch
+    
+    case "$(uname -s)" in
+        Linux*)     os="linux" ;;
+        Darwin*)    os="darwin" ;;
+        *)          echo "❌ Error: Unsupported OS $(uname -s)"; exit 1 ;;
+    esac
+    
+    case "$(uname -m)" in
+        x86_64)     arch="amd64" ;;
+        arm64)      arch="arm64" ;;
+        aarch64)    arch="arm64" ;;
+        *)          echo "❌ Error: Unsupported architecture $(uname -m)"; exit 1 ;;
+    esac
+    
+    local binary_name="argocd-${os}-${arch}"
+    local download_url="https://github.com/argoproj/argo-cd/releases/latest/download/${binary_name}"
+    local install_path="/usr/local/bin/argocd"
+    
+    echo "🔽 Downloading ArgoCD CLI from ${download_url}..."
+    
+    # Try to install to /usr/local/bin first, fallback to local directory
+    if curl -sSL -o "${install_path}" "${download_url}" 2>/dev/null && chmod +x "${install_path}" 2>/dev/null; then
+        echo "✅ ArgoCD CLI installed to ${install_path}"
+    elif curl -sSL -o "./argocd" "${download_url}" && chmod +x "./argocd"; then
+        export PATH="$(pwd):$PATH"
+        echo "✅ ArgoCD CLI installed to $(pwd)/argocd (added to PATH)"
+    else
+        echo "❌ Error: Failed to install ArgoCD CLI"
+        exit 1
+    fi
+    
+    # Verify installation
+    if command -v argocd &> /dev/null; then
+        echo "🎉 ArgoCD CLI successfully installed: $(argocd version --client --short 2>/dev/null || echo 'version check failed')"
+    else
+        echo "❌ Error: ArgoCD CLI installation verification failed"
+        exit 1
+    fi
+}
+
 # Validation functions
 validate_requirements() {
     # Check if argocd CLI is available
     if ! command -v argocd &> /dev/null; then
-        echo "❌ Error: argocd CLI not found. Please install ArgoCD CLI."
-        exit 1
+        echo "⚠️  ArgoCD CLI not found. Installing automatically..."
+        install_argocd_cli
     fi
     
     # Check if buildkite-agent is available
