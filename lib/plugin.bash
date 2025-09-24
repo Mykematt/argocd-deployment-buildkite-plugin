@@ -102,20 +102,54 @@ validate_config() {
 check_argocd_connectivity() {
     echo "🔗 Checking ArgoCD connectivity..."
     
-    # Check if we can get current context
-    if ! argocd context --current &> /dev/null; then
-        echo "❌ Error: Cannot connect to ArgoCD. Please ensure you are logged in."
-        echo "   Run: argocd login <server>"
+    # Check if already authenticated
+    if argocd context &> /dev/null && argocd account get-user-info &> /dev/null; then
+        echo "✅ Using existing ArgoCD authentication"
+        return 0
+    fi
+    
+    # Get authentication configuration from environment variables (populated by pre-command hook)
+    local server="${ARGOCD_SERVER:-}"
+    local username="${ARGOCD_USERNAME:-}"
+    local password="${ARGOCD_PASSWORD:-}"
+    local token="${ARGOCD_TOKEN:-}"
+    
+    # Validate authentication parameters
+    if [[ -z "$server" ]]; then
+        echo "❌ Error: ArgoCD server not configured"
+        echo "   Please set argocd_server parameter or ARGOCD_SERVER environment variable"
         exit 1
     fi
     
-    # Check if we can get user info
+    # Check authentication method: token OR username+password
+    if [[ -n "$token" ]]; then
+        echo "🎫 Authenticating with ArgoCD token..."
+        if ! argocd login "$server" --auth-token "$token" --insecure; then
+            echo "❌ Error: Failed to authenticate with ArgoCD token"
+            exit 1
+        fi
+    elif [[ -n "$username" && -n "$password" ]]; then
+        echo "👤 Authenticating with ArgoCD username/password..."
+        if ! argocd login "$server" --username "$username" --password "$password" --insecure; then
+            echo "❌ Error: Failed to authenticate with ArgoCD username/password"
+            exit 1
+        fi
+    else
+        echo "❌ Error: ArgoCD authentication not configured"
+        echo "   Please provide either:"
+        echo "   - argocd_token (authentication token), OR"
+        echo "   - argocd_username AND argocd_password (username and password)"
+        echo "   - These can be plain text or secret references (vault:, aws-ssm:, etc.)"
+        exit 1
+    fi
+    
+    # Verify authentication worked
     if ! argocd account get-user-info &> /dev/null; then
-        echo "❌ Error: ArgoCD authentication failed. Please re-login."
+        echo "❌ Error: ArgoCD authentication verification failed"
         exit 1
     fi
     
-    echo "✅ ArgoCD connectivity verified"
+    echo "✅ ArgoCD authentication successful"
 }
 
 # Utility functions
@@ -139,7 +173,14 @@ get_metadata() {
 collect_app_logs() {
     local app_name="$1"
     local log_lines="$2"
-    local log_dir="argocd-logs"
+    
+    # Use Buildkite build directory if available, otherwise temp directory
+    local log_dir
+    if [[ -n "${BUILDKITE_BUILD_PATH:-}" ]]; then
+        log_dir="${BUILDKITE_BUILD_PATH}/argocd-logs"
+    else
+        log_dir="${TMPDIR:-/tmp}/argocd-logs-$$"
+    fi
     
     mkdir -p "$log_dir"
     

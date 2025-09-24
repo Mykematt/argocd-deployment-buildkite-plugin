@@ -6,3 +6,4 @@ tests/mocks/buildkite-agent
 deployment-*.log
 argocd-logs/
 *.log
+test_*.sh

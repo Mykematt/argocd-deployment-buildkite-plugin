@@ -84,7 +84,19 @@ configuration:
         pagerduty_integration_key:
           type: string
           description: "PagerDuty integration key"
-      additionalProperties: false
+    argocd_token:
+      type: string
+      description: "ArgoCD authentication token"
+    argocd_server:
+      type: string
+      description: "ArgoCD server URL"
+    argocd_username:
+      type: string
+      description: "ArgoCD username"
+    argocd_password:
+      type: string
+      description: "Secret reference to ArgoCD password"
   required:
     - app
+    - argocd_server
   additionalProperties: false

@@ -11,13 +11,17 @@ A Buildkite plugin for deploying and rolling back ArgoCD applications with compr
 - 🔔 **Notifications**: Multi-channel notifications (Slack, Email, Webhook, PagerDuty)
 - 🚧 **Manual Rollback Blocks**: Optional manual intervention points
 - ⚡ **Auto Rollback**: Automatic rollback on deployment failures
+- 🔐 **Secret Management**: Built-in support for Vault, AWS SSM, AWS Secrets Manager, and Buildkite Secrets
+- 🔧 **Auto CLI Installation**: Automatically installs ArgoCD CLI if not present
 
-## Requirements
+## Prerequisites
 
-- ArgoCD CLI (`argocd`)
-- Buildkite Agent
-- `jq` for JSON parsing
-- `kubectl` (optional, for pod log collection)
+Before using this plugin, ensure you have:
+
+1. **ArgoCD Server Access**: Your Buildkite agents must have access to your ArgoCD server
+2. **ArgoCD CLI Authentication**: Plugin handles authentication via configuration (see ArgoCD Authentication section)
+3. **Kubernetes Access**: For pod log collection, agents need `kubectl` access to your cluster
+4. **Required Tools**: `argocd`, `jq`, and optionally `kubectl` installed on agents
 
 ## Configuration Options
 
@@ -91,7 +95,7 @@ Slack channel, username, or user ID for notifications using Buildkite's native S
 
 - Channel names: `#deployments`, `#alerts`
 - Usernames: `@username`, `@devops-team`
-- User IDs: `U123ABC456` (found via User > More options > Copy member ID)
+- User IDs: `U123ABC456`
 
 ##### `notifications.email` (string, optional)
 
@@ -105,6 +109,32 @@ Custom webhook URL for notifications.
 
 PagerDuty integration key for alerts.
 
+### ArgoCD Authentication
+
+#### `argocd_server` (string, required)
+
+ArgoCD server URL. Example: `https://argocd.company.com`
+
+**Authentication Methods** (choose one):
+
+**Option 1: Token Authentication**
+
+#### `argocd_token` (string)
+
+Secret reference toArgoCD authentication token. Example: `vault:secret/argocd/token`
+
+**Option 2: Username/Password Authentication**
+
+#### `argocd_username` (string)
+
+ArgoCD username
+
+#### `argocd_password` (string)
+
+Secret reference to ArgoCD password. Example: `vault:secret/argocd/password`
+
+**Secret Management**: The plugin supports Vault (`vault:`), AWS SSM (`aws-ssm:`), AWS Secrets Manager (`aws-sm:`), and Buildkite Secrets (`bk-secrets:`). Passwords and tokens must use secure secret management - plain text values are not allowed.
+
 ## Usage Patterns
 
 ### Production: Auto-rollback (Recommended)
@@ -114,8 +144,9 @@ Safe deployments with automatic rollback on health check failures:
 ```yaml
 steps:
   - plugins:
-      - argocd_deployment#v1.0.0:
+      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
           app: "my-app"
+          mode: "deploy"
           # health_check: true (default)
           # Automatic rollback on health failures
 ```
@@ -128,8 +159,9 @@ Disable auto-rollback for investigation, use explicit rollback when needed:
 # Deploy without auto-rollback
 steps:
   - plugins:
-      - argocd_deployment#v1.0.0:
+      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
           app: "my-app"
+          mode: "deploy"
           health_check: false  # Disable auto-rollback
 ```
 
@@ -137,67 +169,15 @@ steps:
 # Later: Manual rollback pipeline
 steps:
   - plugins:
-      - argocd_deployment#v1.0.0:
+      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
           app: "my-app"
           mode: "rollback"
           rollback_mode: "manual"  # Human oversight
+          collect_logs: true
+          upload_artifacts: true
 ```
 
 ## Examples
-
-### Basic Deployment
-
-Deploy an ArgoCD application with default settings:
-
-```yaml
-steps:
-  - label: "🚀 Deploy Application"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
-          app: "my-application"
-```
-
-### Deployment with Custom Timeout
-
-Deploy with a custom timeout and health monitoring:
-
-```yaml
-steps:
-  - label: "🚀 Deploy with Custom Settings"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
-          app: "my-application"
-          timeout: 600
-          health_check_timeout: 900
-```
-
-### Deployment with Manual Rollback Block
-
-Deploy with a manual rollback decision point:
-
-```yaml
-steps:
-  - label: "🚀 Deploy with Manual Rollback Option"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
-          app: "my-application"
-          manual_rollback_block: true
-          block_timeout: 30
-```
-
-### Rollback Operation
-
-Rollback an application to the previous version:
-
-```yaml
-steps:
-  - label: "🔄 Rollback Application"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
-          app: "my-application"
-          mode: "rollback"
-          rollback_mode: "auto"
-```
 
 ### Deployment with Notifications
 
@@ -214,37 +194,9 @@ steps:
             # slack_channel: "@devops-lead"  # Username
             # slack_channel: "U123ABC456"    # User ID
             email: "devops@company.com"
-```
-
-### Advanced Configuration
-
-Full configuration with all options:
-
-```yaml
-steps:
-  - plugins:
-      - argocd_deployment#v1.0.0:
-          app: "my-application"
-          mode: "deploy"
-          timeout: 300
-          health_check: true
-          collect_logs: true
-          upload_artifacts: true
-          notifications:
-            slack_channel: "#deployments"
-            email: "devops@company.com"
             webhook_url: "https://your-webhook.com/notify"
             pagerduty_integration_key: "YOUR_PAGERDUTY_KEY"
 ```
-
-## Prerequisites
-
-Before using this plugin, ensure you have:
-
-1. **ArgoCD Server Access**: Your Buildkite agents must have access to your ArgoCD server
-2. **ArgoCD CLI Authentication**: Agents must be authenticated with ArgoCD (`argocd login`)
-3. **Kubernetes Access**: For pod log collection, agents need `kubectl` access to your cluster
-4. **Required Tools**: `argocd`, `jq`, and optionally `kubectl` installed on agents
 
 ## Compatibility
 
@@ -255,17 +207,6 @@ Before using this plugin, ensure you have:
 - ✅ Fully supported (all combinations of attributes have been tested to pass)
 - ⚠️ Partially supported (some combinations cause errors/issues)
 - ❌ Not supported
-
-## Workflow
-
-1. **Validation**: Plugin validates ArgoCD connectivity and configuration
-2. **Pre-deployment**: Captures current application state and revision
-3. **Deployment/Rollback**: Executes ArgoCD sync or rollback operation
-4. **Health Monitoring**: Monitors application health via ArgoCD API (if enabled)
-5. **Log Collection**: Collects ArgoCD and pod logs (if enabled)
-6. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
-7. **Notifications**: Sends notifications on rollback events
-8. **Manual Blocks**: Optionally injects manual rollback decision points
 
 ## 👩‍💻 Contributing
 
