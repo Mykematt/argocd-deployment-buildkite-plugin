@@ -192,7 +192,7 @@ EOF
 
 @test "Notifications can be configured" {
   export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
-  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_NOTIFICATIONS_SLACK_WEBHOOK='https://hooks.slack.com/test'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_NOTIFICATIONS_SLACK_CHANNEL='#deployments'
 
   run "$PWD"/hooks/command
 

@@ -51,6 +51,8 @@ Timeout in seconds for ArgoCD operations. Defaults to `300`. Must be between 30 
 
 Enable health monitoring via ArgoCD API. Defaults to `true`.
 
+**Note**: When enabled, failed health checks trigger automatic rollback in deploy mode. For manual rollback control (useful in development), set `health_check: false` and use explicit rollback mode when needed.
+
 #### `health_check_interval` (number)
 
 Health check interval in seconds. Defaults to `30`. Must be between 10 and 300 seconds.
@@ -61,7 +63,7 @@ Health check timeout in seconds. Defaults to `300`. Must be between 60 and 1800 
 
 #### `collect_logs` (boolean)
 
-Collect application logs on deployment. Defaults to `true`.
+Collect application logs on deployment. Defaults to `false`.
 
 #### `log_lines` (number)
 
@@ -69,7 +71,7 @@ Number of log lines to collect. Defaults to `1000`. Must be between 100 and 1000
 
 #### `upload_artifacts` (boolean)
 
-Upload logs and deployment artifacts. Defaults to `true`.
+Upload logs and deployment artifacts. Defaults to `false`.
 
 #### `manual_rollback_block` (boolean)
 
@@ -83,9 +85,13 @@ Manual block timeout in minutes. Defaults to `60`. Must be between 5 and 1440 mi
 
 Notification settings for rollback events.
 
-##### `notifications.slack_webhook` (string, optional)
+##### `notifications.slack_channel` (string, optional)
 
-Slack webhook URL for notifications.
+Slack channel, username, or user ID for notifications using Buildkite's native Slack integration. Supports:
+
+- Channel names: `#deployments`, `#alerts`
+- Usernames: `@username`, `@devops-team`
+- User IDs: `U123ABC456` (found via User > More options > Copy member ID)
 
 ##### `notifications.email` (string, optional)
 
@@ -98,6 +104,44 @@ Custom webhook URL for notifications.
 ##### `notifications.pagerduty_integration_key` (string, optional)
 
 PagerDuty integration key for alerts.
+
+## Usage Patterns
+
+### Production: Auto-rollback (Recommended)
+
+Safe deployments with automatic rollback on health check failures:
+
+```yaml
+steps:
+  - plugins:
+      - argocd_deployment#v1.0.0:
+          app: "my-app"
+          # health_check: true (default)
+          # Automatic rollback on health failures
+```
+
+### Development: Manual Control
+
+Disable auto-rollback for investigation, use explicit rollback when needed:
+
+```yaml
+# Deploy without auto-rollback
+steps:
+  - plugins:
+      - argocd_deployment#v1.0.0:
+          app: "my-app"
+          health_check: false  # Disable auto-rollback
+```
+
+```yaml
+# Later: Manual rollback pipeline
+steps:
+  - plugins:
+      - argocd_deployment#v1.0.0:
+          app: "my-app"
+          mode: "rollback"
+          rollback_mode: "manual"  # Human oversight
+```
 
 ## Examples
 
@@ -166,7 +210,9 @@ steps:
       - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
           app: "my-application"
           notifications:
-            slack_webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+            slack_channel: "#deployments"  # Channel name
+            # slack_channel: "@devops-lead"  # Username
+            # slack_channel: "U123ABC456"    # User ID
             email: "devops@company.com"
 ```
 
@@ -185,7 +231,7 @@ steps:
           collect_logs: true
           upload_artifacts: true
           notifications:
-            slack_webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+            slack_channel: "#deployments"
             email: "devops@company.com"
             webhook_url: "https://your-webhook.com/notify"
             pagerduty_integration_key: "YOUR_PAGERDUTY_KEY"

@@ -300,24 +300,49 @@ send_rollback_notification() {
     local to_revision="$3"
     local reason="$4"
     
-    local slack_webhook
+    local slack_channel
     local email
     local webhook_url
     local pagerduty_key
     
-    slack_webhook=$(plugin_read_config NOTIFICATIONS_SLACK_WEBHOOK "")
+    slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
     email=$(plugin_read_config NOTIFICATIONS_EMAIL "")
     webhook_url=$(plugin_read_config NOTIFICATIONS_WEBHOOK_URL "")
     pagerduty_key=$(plugin_read_config NOTIFICATIONS_PAGERDUTY_INTEGRATION_KEY "")
     
     local message="🚨 ArgoCD Rollback Alert\n\nApplication: $app_name\nReason: $reason\nFrom: $from_revision\nTo: $to_revision\nBuild: ${BUILDKITE_BUILD_URL:-N/A}"
     
-    # Send Slack notification
-    if [[ -n "$slack_webhook" ]]; then
-        echo "📢 Sending Slack notification..."
-        curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$message\"}" \
-            "$slack_webhook" || echo "⚠️  Failed to send Slack notification"
+    # Send Slack notification using Buildkite's native integration
+    if [[ -n "$slack_channel" ]]; then
+        echo "📢 Sending Slack notification to $slack_channel..."
+        
+        # Create annotation for visibility
+        buildkite-agent annotate --style "warning" --context "rollback-notification-$app_name" \
+            "🚨 **ArgoCD Rollback Alert**\n\n**Application:** $app_name\n**Reason:** $reason\n**From:** \`$from_revision\`\n**To:** \`$to_revision\`\n**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})" || echo "⚠️  Failed to create rollback annotation"
+        
+        # Inject notification step using Buildkite's native Slack integration
+        local notification_pipeline
+        notification_pipeline=$(cat <<EOF
+steps:
+  - label: ":slack: Rollback Notification"
+    command: "echo 'Rollback notification sent'"
+    notify:
+      - slack: "$slack_channel"
+        message: |
+          🚨 **ArgoCD Rollback Alert**
+          
+          **Application:** $app_name
+          **Reason:** $reason
+          **From Revision:** \`$from_revision\`
+          **To Revision:** \`$to_revision\`
+          **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
+          **Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}
+          **Branch:** ${BUILDKITE_BRANCH:-unknown}
+EOF
+        )
+        
+        echo "$notification_pipeline" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject Slack notification step"
+        echo "✅ Slack notification step injected for $slack_channel"
     fi
     
     # Send email notification
@@ -430,8 +455,8 @@ handle_log_collection_and_artifacts() {
     local upload_artifacts_enabled
     local log_lines
     
-    collect_logs=$(plugin_read_config COLLECT_LOGS "true")
-    upload_artifacts_enabled=$(plugin_read_config UPLOAD_ARTIFACTS "true")
+    collect_logs=$(plugin_read_config COLLECT_LOGS "false")
+    upload_artifacts_enabled=$(plugin_read_config UPLOAD_ARTIFACTS "false")
     log_lines=$(plugin_read_config LOG_LINES "1000")
     
     if [[ "$collect_logs" == "true" ]]; then

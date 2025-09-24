@@ -47,7 +47,7 @@ configuration:
     collect_logs:
       type: boolean
       description: "Collect application logs on deployment"
-      default: true
+      default: false
     log_lines:
       type: number
       description: "Number of log lines to collect"
@@ -57,7 +57,7 @@ configuration:
     upload_artifacts:
       type: boolean
       description: "Upload logs and deployment artifacts"
-      default: true
+      default: false
     manual_rollback_block:
       type: boolean
       description: "Add manual rollback block step"
@@ -72,9 +72,9 @@ configuration:
       type: object
       description: "Notification settings for rollback events"
       properties:
-        slack_webhook:
+        slack_channel:
           type: string
-          description: "Slack webhook URL for notifications"
+          description: "Slack channel, username, or user ID for notifications (e.g., '#deployments', '@username', or 'U123ABC456')"
         email:
           type: string
           description: "Email address for notifications"
