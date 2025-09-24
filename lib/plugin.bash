@@ -34,8 +34,10 @@ install_argocd_cli() {
     if curl -sSL -o "${install_path}" "${download_url}" 2>/dev/null && chmod +x "${install_path}" 2>/dev/null; then
         echo "✅ ArgoCD CLI installed to ${install_path}"
     elif curl -sSL -o "./argocd" "${download_url}" && chmod +x "./argocd"; then
-        export PATH="$(pwd):$PATH"
-        echo "✅ ArgoCD CLI installed to $(pwd)/argocd (added to PATH)"
+        local current_dir
+        current_dir="$(pwd)"
+        export PATH="${current_dir}:$PATH"
+        echo "✅ ArgoCD CLI installed to ${current_dir}/argocd (added to PATH)"
     else
         echo "❌ Error: Failed to install ArgoCD CLI"
         exit 1
