@@ -39,6 +39,9 @@ main() {
             echo "❌ Error: rollback_mode is required when mode is 'rollback'. Must be 'auto' or 'manual'"
             return 1
         fi
+    else
+        echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
+        return 1
     fi
     
     # Validate requirements
@@ -59,10 +62,6 @@ main() {
             local previous_revision
             previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
             execute_rollback "$app_name" "$previous_revision" "" "$rollback_mode"
-            ;;
-        *)
-            echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
-            return 1
             ;;
     esac
 }
