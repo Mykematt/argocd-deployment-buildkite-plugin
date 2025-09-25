@@ -111,7 +111,7 @@ deploy_application() {
             echo "🚨 Health check failed after deployment"
             previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
             handle_deployment_failure "$app_name" "auto" "$previous_revision" "$log_file" "health_check_failed"
-            return 1
+            # Let handle_deployment_failure manage the exit - don't return here
         fi
         
         # Collect logs and upload artifacts if enabled
