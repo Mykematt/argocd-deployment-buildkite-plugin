@@ -22,6 +22,11 @@ setup() {
   # Mock argocd CLI for tests
   export PATH="$PWD/tests/mocks:$PATH"
   
+  # Set required authentication environment variables for tests
+  export ARGOCD_SERVER="https://test-argocd.example.com"
+  export ARGOCD_USERNAME="test-admin"
+  export ARGOCD_PASSWORD="test-password"
+  
   # Create mock argocd command
   mkdir -p tests/mocks
   cat > tests/mocks/argocd << 'EOF'
@@ -29,6 +34,10 @@ setup() {
 case "$1" in
   "version") echo "argocd: v2.8.0" ;;
   "context") echo "current" ;;
+  "login") 
+    echo "Logged in successfully"
+    exit 0
+    ;;
   "app")
     case "$2" in
       "get") 
