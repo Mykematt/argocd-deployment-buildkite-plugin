@@ -331,12 +331,19 @@ send_rollback_notification() {
         echo "📢 Sending Slack notification to $slack_channel..."
         
         # Create annotation for visibility
-        buildkite-agent annotate --style "warning" --context "rollback-notification-$app_name" \
-            "🚨 **ArgoCD Rollback Alert**\n\n**Application:** $app_name\n**Reason:** $reason\n**From:** \`$from_revision\`\n**To:** \`$to_revision\`\n**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})" || echo "⚠️  Failed to create rollback annotation"
+        local slack_annotation="🚨 **ArgoCD Rollback Alert**
+
+        **Application:** \`$app_name\`
+        **Reason:** $reason
+        **From:** \`$from_revision\`
+        **To:** \`$to_revision\`
+        **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})"
+        
+        buildkite-agent annotate "$slack_annotation" --style "warning" --context "rollback-notification-$app_name" || echo "⚠️  Failed to create rollback annotation"
         
         # Inject notification step using Buildkite's native Slack integration
         local notification_pipeline
-        notification_pipeline=$(cat <<EOF
+        notification_pipeline=$(cat <<-EOF
 steps:
   - label: ":slack: Rollback Notification"
     command: "echo 'Rollback notification sent'"
@@ -345,13 +352,13 @@ steps:
         message: |
           🚨 **ArgoCD Rollback Alert**
           
-          **Application:** $app_name
+          **Application:** \`$app_name\`
           **Reason:** $reason
           **From Revision:** \`$from_revision\`
           **To Revision:** \`$to_revision\`
           **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-          **Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}
-          **Branch:** ${BUILDKITE_BRANCH:-unknown}
+          **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+          **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`
 EOF
         )
         
@@ -397,13 +404,14 @@ EOF
             'https://events.pagerduty.com/v2/enqueue' || echo "⚠️  Failed to send PagerDuty alert"
     fi
     
-    local annotation="🔄 **ArgoCD Rollback**\n\n"
-    annotation+="**Application:** $app_name\n"
-    annotation+="**Failed Revision:** \`$from_revision\`\n"
-    annotation+="**Rolled Back To:** \`$to_revision\`\n"
-    annotation+="**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})\n"
-    annotation+="**Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}\n"
-    annotation+="**Branch:** ${BUILDKITE_BRANCH:-unknown}\n"
+    local annotation="🔄 **ArgoCD Rollback**
+
+    **Application:** \`$app_name\`
+    **Failed Revision:** \`$from_revision\`
+    **Rolled Back To:** \`$to_revision\`
+    **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})
+    **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+    **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
     
     buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
     
@@ -422,18 +430,18 @@ create_deployment_annotation() {
         "success")
             annotation="✅ **ArgoCD Deployment Successful**
 
-**Application:** $app_name
-**Previous Version:** $previous_version
-**Current Version:** $current_version
-**Status:** $deployment_result
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            **Application:** \`$app_name\`
+            **Previous Version:** \`$previous_version\`
+            **Current Version:** \`$current_version\`
+            **Status:** \`$deployment_result\`
+            **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
         "failed")
             annotation="❌ **ArgoCD Deployment Failed**
 
-**Application:** $app_name
-**Status:** $deployment_result
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            **Application:** \`$app_name\`
+            **Status:** \`$deployment_result\`
+            **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
     esac
     
@@ -452,13 +460,14 @@ create_rollback_annotation() {
     local from_revision="$2"
     local to_revision="$3"
     
-    local annotation="🔄 **ArgoCD Rollback**\n\n"
-    annotation+="**Application:** $app_name\n"
-    annotation+="**Failed Revision:** \`$from_revision\`\n"
-    annotation+="**Rolled Back To:** \`$to_revision\`\n"
-    annotation+="**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})\n"
-    annotation+="**Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-unknown}\n"
-    annotation+="**Branch:** ${BUILDKITE_BRANCH:-unknown}\n"
+    local annotation="🔄 **ArgoCD Rollback**
+
+    **Application:** \`$app_name\`
+    **Failed Revision:** \`$from_revision\`
+    **Rolled Back To:** \`$to_revision\`
+    **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})
+    **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+    **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
     
     buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
 }
@@ -501,59 +510,6 @@ handle_log_collection_and_artifacts() {
     fi
 }
 
-inject_manual_rollback_block() {
-    local app_name="$1"
-    
-    local manual_block_enabled
-    local block_timeout
-    
-    manual_block_enabled=$(plugin_read_config MANUAL_ROLLBACK_BLOCK "false")
-    block_timeout=$(plugin_read_config BLOCK_TIMEOUT "60")
-    
-    if [[ "$manual_block_enabled" == "true" ]]; then
-        echo "🚧 Injecting manual rollback block step..."
-        
-        local pipeline_yaml
-        pipeline_yaml=$(cat <<EOF
-steps:
-  - block: ":warning: Manual Rollback Decision"
-    prompt: "Do you want to rollback the deployment for $app_name?"
-    fields:
-      - select: "Action"
-        key: "rollback_action"
-        options:
-          - label: "Keep Current Deployment"
-            value: "keep"
-          - label: "Rollback to Previous Version"
-            value: "rollback"
-    timeout_in_minutes: $block_timeout
-    
-  - label: ":arrow_backward: Execute Rollback"
-    command: |
-      if [[ "\${BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG}" ]]; then
-        echo "Executing rollback for $app_name..."
-        # This would trigger the rollback mode of this plugin
-        buildkite-agent pipeline upload <<ROLLBACK_PIPELINE
-steps:
-  - plugins:
-      - \"$(get_plugin_reference)\":
-          app: "$app_name"
-          mode: "rollback"
-          rollback_mode: "manual"
-ROLLBACK_PIPELINE
-      else
-        echo "Manual rollback selected but no action taken (not in triggered build)"
-      fi
-    depends_on:
-      - step: ":warning: Manual Rollback Decision"
-        allow_failure: false
-    if: 'build.env("BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG") != null && build.meta_data.get("rollback_action") == "rollback"'
-EOF
-        )
-        
-        echo "$pipeline_yaml" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject manual rollback block"
-    fi
-}
 
 inject_rollback_decision_block() {
     local app_name="$1"
@@ -562,7 +518,7 @@ inject_rollback_decision_block() {
     echo "📋 Injecting rollback decision block step..."
     
     local pipeline_yaml
-    pipeline_yaml=$(cat <<EOF
+    pipeline_yaml=$(cat <<-EOF
 steps:
   - block: ":warning: Deployment Failed - Rollback Decision"
     prompt: "Deployment failed for $app_name. What would you like to do?"
@@ -602,11 +558,6 @@ EOF
         )
         
         echo "$pipeline_yaml" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject rollback decision block"
-}
-
-get_plugin_reference() {
-    # Return the plugin reference for dynamic pipeline injection
-    echo "github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0"
 }
 
 # Execute main function
