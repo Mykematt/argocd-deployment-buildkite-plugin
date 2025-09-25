@@ -691,39 +691,33 @@ inject_rollback_decision_block() {
     echo "📋 Injecting rollback decision block step..."
     echo "🔍 Fetching recent deployment history..."
     
-    # Get recent revisions from ArgoCD history with error handling
+    # Get revision options with simplified approach
+    echo "📋 Fetching revision options..."
     local revision_options=""
-    local count=0
-    local history_output
     
-    # Try to get history with better error handling
-    if ! history_output=$(argocd app history "$app_name" 2>&1); then
-        echo "⚠️  Failed to fetch ArgoCD history: $history_output"
-        echo "📋 Using fallback with previous revision only"
-    else
-        echo "✅ Successfully fetched ArgoCD history"
-        while IFS= read -r history_line && [[ $count -lt 10 ]]; do
-            if [[ -n "$history_line" && "$history_line" != "ID"* ]]; then
-                local revision_id
-                local revision_date
-                local revision_hash
-                revision_id=$(echo "$history_line" | awk '{print $1}')
-                revision_date=$(echo "$history_line" | awk '{print $2, $3}')
-                revision_hash=$(echo "$history_line" | awk '{print $7}' | sed 's/[()]//g')
-                
-                if [[ -n "$revision_hash" && "$revision_hash" != "unknown" ]]; then
-                    local short_hash=${revision_hash:0:7}
-                    revision_options+="          - label: \"ID $revision_id: $short_hash ($revision_date)\"
-            value: \"$revision_hash\"
+    # Try to get multiple revisions, fallback to previous revision only
+    if argocd app history "$app_name" > /tmp/argocd_history.txt 2>/dev/null; then
+        echo "✅ Got ArgoCD history, processing revisions..."
+        local count=0
+        while IFS= read -r line && [[ $count -lt 5 ]]; do
+            if [[ -n "$line" && "$line" != "ID"* ]]; then
+                local rev_id=$(echo "$line" | awk '{print $1}')
+                local rev_hash=$(echo "$line" | awk '{print $7}' | tr -d '()')
+                if [[ -n "$rev_hash" && "$rev_hash" != "unknown" ]]; then
+                    local short_hash=${rev_hash:0:7}
+                    revision_options+="          - label: \"Revision $rev_id ($short_hash)\"
+            value: \"$rev_hash\"
 "
                     ((count++))
                 fi
             fi
-        done <<< "$history_output"
+        done < /tmp/argocd_history.txt
+        rm -f /tmp/argocd_history.txt
     fi
     
-    # Fallback if no history found
+    # Fallback to previous revision if no options found
     if [[ -z "$revision_options" ]]; then
+        echo "📋 Using fallback: previous revision only"
         revision_options="          - label: \"Previous Version ($previous_revision)\"
             value: \"$previous_revision\"
 "
