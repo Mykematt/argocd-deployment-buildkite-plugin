@@ -701,8 +701,10 @@ inject_rollback_decision_block() {
         local count=0
         while IFS= read -r line && [[ $count -lt 5 ]]; do
             if [[ -n "$line" && "$line" != "ID"* ]]; then
-                local rev_id=$(echo "$line" | awk '{print $1}')
-                local rev_hash=$(echo "$line" | awk '{print $7}' | tr -d '()')
+                local rev_id
+                rev_id=$(echo "$line" | awk '{print $1}')
+                local rev_hash
+                rev_hash=$(echo "$line" | awk '{print $7}' | tr -d '()')
                 if [[ -n "$rev_hash" && "$rev_hash" != "unknown" ]]; then
                     local short_hash=${rev_hash:0:7}
                     revision_options+="          - label: \"Revision $rev_id ($short_hash)\"
