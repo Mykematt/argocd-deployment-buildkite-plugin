@@ -33,7 +33,7 @@ main() {
         "rollback")
             # For explicit rollback mode, get previous version from metadata
             local previous_revision
-            previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version")
+            previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
             execute_rollback "$app_name" "$previous_revision" "" "$rollback_mode"
             ;;
         *)
@@ -54,7 +54,7 @@ deploy_application() {
     
     # Get current revision before deployment
     local current_revision
-    current_revision=$(get_current_revision "$app_name")
+    current_revision=$(get_current_revision "$app_name" || echo "unknown")
     
     # Store pre-deployment metadata
     set_metadata "deployment:argocd:${app_name}:previous_version" "$current_revision"
@@ -74,7 +74,7 @@ deploy_application() {
     echo "🔄 Executing sync command..."
     if argocd app sync "$app_name" --timeout "$timeout"; then
         local new_revision
-        new_revision=$(get_current_revision "$app_name")
+        new_revision=$(get_current_revision "$app_name" || echo "unknown")
         
         # Update metadata with success
         set_metadata "deployment:argocd:${app_name}:current_version" "$new_revision"
@@ -92,7 +92,7 @@ deploy_application() {
         if ! monitor_application_health "$app_name"; then
             echo "🚨 Health check failed after deployment"
             handle_deployment_failure "$app_name" "auto" "$current_revision" "$log_file" "health_check_failed"
-            return
+            return 1
         fi
         
         # Collect logs and upload artifacts if enabled
@@ -161,7 +161,7 @@ execute_rollback() {
     
     # Get current (failed) revision
     local current_revision
-    current_revision=$(get_current_revision "$app_name")
+    current_revision=$(get_current_revision "$app_name" || echo "unknown")
     
     if [[ -z "$rollback_revision" ]]; then
         echo "❌ Error: No previous version available for rollback"
