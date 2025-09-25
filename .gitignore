@@ -1,6 +1,6 @@
 .vscode
 node_modules
-tests/mocks/buildkite-agent
+tests/mocks/
 
 # Test artifacts and logs
 deployment-*.log

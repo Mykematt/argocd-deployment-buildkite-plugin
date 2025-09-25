@@ -145,7 +145,7 @@ EOF
 
   # Test should fail gracefully when no previous version exists
   assert_failure
-  assert_output --partial 'No previous version available for rollback'
+  assert_output --partial "target_revision is required when mode is 'rollback' and rollback_mode is 'manual'"
 }
 
 @test "Invalid rollback_mode for rollback mode fails" {

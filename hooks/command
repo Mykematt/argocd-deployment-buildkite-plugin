@@ -48,6 +48,17 @@ main() {
             echo "❌ Error: Invalid rollback_mode '$rollback_mode' for rollback mode. Must be 'auto' or 'manual'"
             return 1
         fi
+        
+        # For manual rollback mode, target revision is required
+        if [[ "$rollback_mode" == "manual" ]]; then
+            local target_revision
+            target_revision=$(plugin_read_config TARGET_REVISION "")
+            if [[ -z "$target_revision" ]]; then
+                echo "❌ Error: target_revision is required when mode is 'rollback' and rollback_mode is 'manual'"
+                echo "💡 Specify the exact revision/commit hash you want to rollback to"
+                return 1
+            fi
+        fi
     else
         echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
         return 1
@@ -67,10 +78,18 @@ main() {
             deploy_application "$app_name"
             ;;
         "rollback")
-            # For explicit rollback mode, get previous version from metadata
-            local previous_revision
-            previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
-            execute_rollback "$app_name" "$previous_revision" "" "$rollback_mode"
+            # For explicit rollback mode, determine target revision
+            local target_revision
+            if [[ "$rollback_mode" == "manual" ]]; then
+                # Use specified target revision for manual rollback
+                target_revision=$(plugin_read_config TARGET_REVISION "")
+                echo "🎯 Manual rollback mode: using specified target revision $target_revision"
+            else
+                # Use previous version from metadata for auto rollback
+                target_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
+                echo "🤖 Auto rollback mode: using previous revision $target_revision"
+            fi
+            execute_rollback "$app_name" "$target_revision" "" "$rollback_mode"
             ;;
     esac
 }
@@ -728,60 +747,31 @@ inject_rollback_decision_block() {
     local pipeline_yaml
     pipeline_yaml=$(cat <<-EOF
 steps:
-  - input: ":warning: Deployment Failed - Rollback Decision"
-    prompt: "Deployment failed for $app_name. Choose your action:"
-    fields:
-      - select: "Action"
-        key: "rollback_action"
-        options:
-          - label: "Keep Current (Failed) Deployment"
-            value: "keep"
-          - label: "Rollback to Selected Version"
-            value: "rollback"
-      - select: "Rollback Target (if rollback selected)"
-        key: "rollback_revision"
-        options:
-$revision_options
+  - block: ":warning: Deployment Failed - Manual Rollback Required"
+    prompt: |
+      Deployment failed for **$app_name**
+      
+      **Available rollback options:**
+$revision_options      
+      **Instructions:**
+      1. Unblock this step to continue with manual rollback to the previous revision
+      2. Or cancel the build if you want to keep the current (failed) state
+      
+      **Previous revision:** $previous_revision
     
   - label: ":arrow_backward: Execute Manual Rollback"
     command: |
-      # Check user's decision
-      if [[ "\$BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG" ]]; then
-        rollback_action=\$(buildkite-agent meta-data get "rollback_action" 2>/dev/null || echo "keep")
-        rollback_revision=\$(buildkite-agent meta-data get "rollback_revision" 2>/dev/null || echo "$previous_revision")
-      else
-        rollback_action="rollback"
-        rollback_revision="$previous_revision"
-      fi
+      echo "🔄 Executing manual rollback for $app_name to $previous_revision..."
       
-      if [[ "\$rollback_action" == "keep" ]]; then
-        echo "🚫 User chose to keep current (failed) deployment"
-        echo "⚠️  Application remains in failed state for investigation"
-        exit 0
+      # Execute rollback using the plugin's rollback functionality
+      if argocd app rollback "$app_name" --revision "$previous_revision"; then
+        echo "✅ Successfully rolled back $app_name to $previous_revision"
+        send_rollback_notification "$app_name" "success" "$previous_revision"
       else
-        echo "🔄 User chose to rollback to: \$rollback_revision"
-        echo "🚀 Executing manual rollback for $app_name to \$rollback_revision..."
-        
-        # Set environment for rollback execution
-        export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP="$app_name"
-        export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ROLLBACK_MODE="manual"
-        
-        # Execute rollback to selected revision
-        $(dirname "\$0")/execute_manual_rollback.sh "$app_name" "\$rollback_revision"
+        echo "❌ Failed to rollback $app_name"
+        send_rollback_notification "$app_name" "failed" "$previous_revision"
+        exit 1
       fi
-    depends_on:
-      - step: ":warning: Deployment Failed - Rollback Decision"
-        allow_failure: false
-    if: 'build.meta_data.get("rollback_action") == "rollback"'
-    
-  - label: ":x: Keep Failed Deployment"
-    command: |
-      echo "User chose to keep the failed deployment for $app_name"
-      echo "Manual intervention may be required"
-    depends_on:
-      - step: ":warning: Deployment Failed - Rollback Decision"
-        allow_failure: false
-    if: 'build.meta_data.get("rollback_action") == "keep"'
 EOF
         )
         

@@ -180,9 +180,10 @@ get_metadata() {
 collect_app_logs() {
     local app_name="$1"
     local log_lines="$2"
-    local log_dir="argocd-logs"
+    local log_dir
+    log_dir=$(mktemp -d)
     
-    mkdir -p "$log_dir"
+    echo "📋 Using temporary log directory: $log_dir" >&2
     
     echo "📋 Collecting ArgoCD application logs..." >&2
     
@@ -255,7 +256,7 @@ create_deployment_log() {
     local operation="$2"
     local result="$3"
     local log_file
-    log_file="deployment-${app_name}-$(date +%Y%m%d-%H%M%S).log"
+    log_file=$(mktemp "/tmp/deployment-${app_name}-$(date +%Y%m%d-%H%M%S).log.XXXXXX")
     
     {
         echo "=== ArgoCD Deployment Log ==="
