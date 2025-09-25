@@ -196,48 +196,40 @@ collect_app_logs() {
         echo "✅ Collected application manifests" >&2
     fi
     
-    # Get application events
-    if argocd app get "$app_name" --show-events > "$log_dir/${app_name}-events.txt" 2>/dev/null; then
-        echo "✅ Collected application events" >&2
+    # Get application resources and detailed tree view
+    if argocd app resources "$app_name" > "$log_dir/${app_name}-resources.txt" 2>/dev/null; then
+        echo "✅ Collected application resources" >&2
     fi
     
-    # Try to get pod logs if kubectl is available
-    if command -v kubectl &> /dev/null; then
-        echo "🔍 Attempting to collect pod logs..." >&2
-        
-        # Get namespace from ArgoCD app
-        local namespace
-        namespace=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.spec.destination.namespace // "default"')
-        
-        # Get pods for the application
-        local app_label
-        app_label=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.metadata.labels."app.kubernetes.io/instance" // .metadata.name')
-        
-        # Collect pod logs without hanging on empty results
-        local pods_found=false
-        while IFS= read -r pod_line; do
-            if [[ -n "$pod_line" ]]; then
-                pods_found=true
-                local pod_name
-                pod_name=$(echo "$pod_line" | awk '{print $1}')
-                
-                if [[ -n "$pod_name" ]]; then
-                    echo "📋 Collecting logs for pod: $pod_name" >&2
-                    kubectl logs -n "$namespace" "$pod_name" --tail="$log_lines" > "$log_dir/${app_name}-${pod_name}.log" 2>/dev/null || true
-                    
-                    # Get previous logs if pod restarted
-                    kubectl logs -n "$namespace" "$pod_name" --previous --tail="$log_lines" > "$log_dir/${app_name}-${pod_name}-previous.log" 2>/dev/null || true
-                fi
-            fi
-        done < <(kubectl get pods -n "$namespace" -l "app.kubernetes.io/instance=$app_label" --no-headers 2>/dev/null || true)
-        
-        if [[ "$pods_found" == "true" ]]; then
-            echo "✅ Pod logs collected" >&2
-        else
-            echo "⚠️  Could not collect pod logs (kubectl not available or no pods found)" >&2
-        fi
-    else
-        echo "⚠️  kubectl not available, skipping pod log collection" >&2
+    # Get detailed tree view (includes events and resource status)
+    if argocd app get "$app_name" --output tree=detailed > "$log_dir/${app_name}-tree-detailed.txt" 2>/dev/null; then
+        echo "✅ Collected detailed resource tree" >&2
+    fi
+    
+    # Collect pod logs using ArgoCD CLI (always available)
+    echo "🔍 Collecting application pod logs..." >&2
+    
+    # Get current pod logs
+    if argocd app logs "$app_name" --tail="$log_lines" > "$log_dir/${app_name}-pods-current.log" 2>/dev/null; then
+        echo "✅ Collected current pod logs" >&2
+    fi
+    
+    # Get previous pod logs (if pods restarted)
+    if argocd app logs "$app_name" --previous --tail="$log_lines" > "$log_dir/${app_name}-pods-previous.log" 2>/dev/null; then
+        echo "✅ Collected previous pod logs" >&2
+    fi
+    
+    # Get additional ArgoCD debugging info
+    echo "🔍 Collecting additional ArgoCD debugging info..." >&2
+    
+    # Get application with operation details
+    if argocd app get "$app_name" --show-operation --output yaml > "$log_dir/${app_name}-with-operations.yaml" 2>/dev/null; then
+        echo "✅ Collected application with operations" >&2
+    fi
+    
+    # Get application parameters and overrides
+    if argocd app get "$app_name" --show-params --output yaml > "$log_dir/${app_name}-with-params.yaml" 2>/dev/null; then
+        echo "✅ Collected application parameters" >&2
     fi
     
     echo "$log_dir"

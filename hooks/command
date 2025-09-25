@@ -672,7 +672,6 @@ steps:
             value: "keep"
           - label: "Rollback to Previous Version ($previous_revision)"
             value: "rollback"
-    timeout_in_minutes: 60
     
   - label: ":arrow_backward: Execute Manual Rollback"
     command: |
