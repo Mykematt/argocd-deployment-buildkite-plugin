@@ -184,12 +184,13 @@ execute_rollback() {
     local sync_policy
     sync_policy=$(argocd app get "$app_name" -o json | jq -r '.spec.syncPolicy.automated // empty')
     
+    local rollback_command
     if [[ -n "$sync_policy" ]]; then
         echo "🔄 Auto-sync enabled - using sync command for rollback"
-        rollback_command="argocd app sync \"$app_name\" --revision \"$rollback_revision\" --timeout \"$timeout\""
+        rollback_command="argocd app sync $app_name --revision $rollback_revision --timeout $timeout"
     else
         echo "🔄 Auto-sync disabled - using rollback command"
-        rollback_command="argocd app rollback \"$app_name\" \"$rollback_revision\" --timeout \"$timeout\""
+        rollback_command="argocd app rollback $app_name $rollback_revision --timeout $timeout"
     fi
     
     {
@@ -419,18 +420,20 @@ create_deployment_annotation() {
     local annotation
     case "$deployment_result" in
         "success")
-            annotation="✅ **ArgoCD Deployment Successful**\n\n"
-            annotation+="**Application:** $app_name\n"
-            annotation+="**Previous Version:** $previous_version\n"
-            annotation+="**Current Version:** $current_version\n"
-            annotation+="**Status:** $deployment_result\n"
-            annotation+="**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')\n"
+            annotation="✅ **ArgoCD Deployment Successful**
+
+**Application:** $app_name
+**Previous Version:** $previous_version
+**Current Version:** $current_version
+**Status:** $deployment_result
+**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
         "failed")
-            annotation="❌ **ArgoCD Deployment Failed**\n\n"
-            annotation+="**Application:** $app_name\n"
-            annotation+="**Status:** $deployment_result\n"
-            annotation+="**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')\n"
+            annotation="❌ **ArgoCD Deployment Failed**
+
+**Application:** $app_name
+**Status:** $deployment_result
+**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
     esac
     
