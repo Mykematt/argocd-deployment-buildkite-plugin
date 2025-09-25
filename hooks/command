@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eo pipefail
+set -e
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
@@ -143,7 +143,7 @@ handle_deployment_failure() {
     else
         echo "❌ Unknown rollback mode: $rollback_mode"
         handle_log_collection_and_artifacts "$app_name" "$log_file"
-        exit 1
+        return 1
     fi
 }
 
@@ -166,7 +166,7 @@ execute_rollback() {
         echo "❌ Error: No previous version available for rollback"
         echo "=== Rollback Result: FAILED - No previous version ===" >> "$rollback_log_file"
         handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
-        exit 1
+        return 1
     fi
     
     echo "⏪ Rolling back from $current_revision to $rollback_revision..."
@@ -236,7 +236,7 @@ execute_rollback() {
         send_rollback_notification "$app_name" "$current_revision" "$rollback_revision" "rollback_failed"
         
         echo "❌ Rollback failed"
-        exit 1
+        return 1
     fi
 }
 

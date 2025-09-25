@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eo pipefail
+set -e
 
 PLUGIN_PREFIX="ARGOCD_DEPLOYMENT"
 
@@ -18,19 +18,19 @@ setup_argocd_auth() {
     if [[ -z "$server" ]]; then
         echo "❌ Error: ARGOCD_SERVER not configured"
         echo "   Set via plugin config or ARGOCD_SERVER environment variable"
-        exit 1
+        return 1
     fi
     
     if [[ -z "$username" ]]; then
         echo "❌ Error: ARGOCD_USERNAME not configured"
         echo "   Set via plugin config or ARGOCD_USERNAME environment variable"
-        exit 1
+        return 1
     fi
     
     if [[ -z "$password" ]]; then
         echo "❌ Error: ARGOCD_PASSWORD not available"
         echo "   Must be set as environment variable (use secret management)"
-        exit 1
+        return 1
     fi
     
     echo "🔐 Authenticating with ArgoCD server: $server"
@@ -38,7 +38,7 @@ setup_argocd_auth() {
     # Login to ArgoCD
     if ! argocd login "$server" --username "$username" --password "$password" --insecure; then
         echo "❌ Failed to authenticate with ArgoCD"
-        exit 1
+        return 1
     fi
     
     echo "✅ Successfully authenticated with ArgoCD"
@@ -81,7 +81,7 @@ install_argocd_cli() {
         echo "✅ ArgoCD CLI installed to ${current_dir}/argocd (added to PATH)"
     else
         echo "❌ Error: Failed to install ArgoCD CLI"
-        exit 1
+        return 1
     fi
     
     # Verify installation
@@ -89,7 +89,7 @@ install_argocd_cli() {
         echo "🎉 ArgoCD CLI successfully installed: $(argocd version --client --short 2>/dev/null || echo 'version check failed')"
     else
         echo "❌ Error: ArgoCD CLI installation verification failed"
-        exit 1
+        return 1
     fi
 }
 
@@ -104,13 +104,13 @@ validate_requirements() {
     # Check if buildkite-agent is available
     if ! command -v buildkite-agent &> /dev/null; then
         echo "❌ Error: buildkite-agent not found. This plugin requires Buildkite agent."
-        exit 1
+        return 1
     fi
     
     # Check if jq is available
     if ! command -v jq &> /dev/null; then
         echo "❌ Error: jq not found. Please install jq for JSON parsing."
-        exit 1
+        return 1
     fi
 }
 
@@ -121,19 +121,19 @@ validate_config() {
     
     if [[ -z "$app_name" ]]; then
         echo "❌ Error: app parameter is required"
-        exit 1
+        return 1
     fi
     
     if [[ "$mode" != "deploy" && "$mode" != "rollback" ]]; then
         echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
-        exit 1
+        return 1
     fi
     
     # Validate rollback_mode only for rollback operations
     if [[ "$mode" == "rollback" ]]; then
         if [[ "$rollback_mode" != "auto" && "$rollback_mode" != "manual" ]]; then
             echo "❌ Error: Invalid rollback_mode '$rollback_mode'. Must be 'auto' or 'manual'"
-            exit 1
+            return 1
         fi
     fi
     
@@ -147,13 +147,13 @@ check_argocd_connectivity() {
     if ! argocd context --current &> /dev/null; then
         echo "❌ Error: Cannot connect to ArgoCD. Please ensure you are logged in."
         echo "   Run: argocd login <server>"
-        exit 1
+        return 1
     fi
     
     # Check if we can get user info
     if ! argocd account get-user-info &> /dev/null; then
         echo "❌ Error: ArgoCD authentication failed. Please re-login."
-        exit 1
+        return 1
     fi
     
     echo "✅ ArgoCD connectivity verified"
