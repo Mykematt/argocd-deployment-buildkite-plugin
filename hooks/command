@@ -463,8 +463,6 @@ send_rollback_notification() {
     webhook_url=$(plugin_read_config NOTIFICATIONS_WEBHOOK_URL "")
     pagerduty_key=$(plugin_read_config NOTIFICATIONS_PAGERDUTY_INTEGRATION_KEY "")
     
-    message="🚨 ArgoCD Rollback Alert\n\nApplication: $app_name\nReason: $reason\nFrom: $from_revision\nTo: $to_revision\nBuild: ${BUILDKITE_BUILD_URL:-N/A}"
-    
     # Send Slack notification using Buildkite's native integration
     if [[ -n "$slack_channel" ]]; then
         echo "📢 Sending Slack notification to $slack_channel..."
