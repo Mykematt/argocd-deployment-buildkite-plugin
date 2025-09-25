@@ -2,6 +2,10 @@
 case "$1" in
   "version") echo "argocd: v2.8.0" ;;
   "context") echo "current" ;;
+  "login") 
+    echo "Logged in successfully"
+    exit 0
+    ;;
   "app")
     case "$2" in
       "get") 

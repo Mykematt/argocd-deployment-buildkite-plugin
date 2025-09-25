@@ -176,17 +176,30 @@ execute_rollback() {
     set_metadata "deployment:argocd:${app_name}:rollback_to" "$rollback_revision"
     set_metadata "deployment:argocd:${app_name}:status" "rolling_back"
     
-    # Execute rollback
+    # Execute rollback - choose command based on sync policy
     local timeout
     timeout=$(plugin_read_config TIMEOUT "300")
     
+    # Check if auto-sync is enabled
+    local sync_policy
+    sync_policy=$(argocd app get "$app_name" -o json | jq -r '.spec.syncPolicy.automated // empty')
+    
+    if [[ -n "$sync_policy" ]]; then
+        echo "🔄 Auto-sync enabled - using sync command for rollback"
+        rollback_command="argocd app sync \"$app_name\" --revision \"$rollback_revision\" --timeout \"$timeout\""
+    else
+        echo "🔄 Auto-sync disabled - using rollback command"
+        rollback_command="argocd app rollback \"$app_name\" \"$rollback_revision\" --timeout \"$timeout\""
+    fi
+    
     {
         echo "=== Rollback Command Output ==="
-        argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout" 2>&1
+        echo "Command: $rollback_command"
+        eval "$rollback_command" 2>&1
         echo "Exit code: $?"
     } >> "$rollback_log_file"
     
-    if argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout"; then
+    if eval "$rollback_command"; then
         # Update metadata with success
         set_metadata "deployment:argocd:${app_name}:current_version" "$rollback_revision"
         set_metadata "deployment:argocd:${app_name}:result" "rollback_success"
