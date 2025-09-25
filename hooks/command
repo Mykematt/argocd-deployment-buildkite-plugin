@@ -312,20 +312,32 @@ execute_rollback() {
         echo "🔄 Auto-sync not enabled - using direct rollback command"
         {
             echo "=== Rollback Command Output ==="
-            echo "Command: argocd app rollback $app_name $rollback_revision --timeout $timeout"
-            argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout" 2>&1
-            echo "Exit code: $?"
+            echo "Looking up history ID for revision: $rollback_revision"
+            argocd app history "$app_name" | head -10
         } >> "$rollback_log_file"
         
-        set +e
-        argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout"
-        rollback_exit_code=$?
-        set -e
+        # Look up the ArgoCD deployment history ID for the git revision
+        echo "🔍 Looking up deployment history ID for revision: $rollback_revision"
+        history_id=$(argocd app history "$app_name" | grep "${rollback_revision:0:7}" | tail -1 | awk '{print $1}')
+        
+        if [[ -z "$history_id" ]]; then
+            echo "❌ Could not find deployment history ID for revision: $rollback_revision"
+            rollback_success=false
+            rollback_output="No deployment history found for revision ${rollback_revision:0:7}"
+            rollback_exit_code=1
+        else
+            echo "📍 Found deployment history ID: $history_id for revision: $rollback_revision"
+            set +e
+            rollback_output=$(argocd app rollback "$app_name" "$history_id" --timeout "$timeout" 2>&1)
+            rollback_exit_code=$?
+            set -e
+        fi
         
         if [[ $rollback_exit_code -eq 0 ]]; then
             rollback_success=true
         else
             echo "❌ ArgoCD rollback command failed with exit code: $rollback_exit_code"
+            echo "ArgoCD rollback error output: $rollback_output"
             rollback_success=false
         fi
     fi
