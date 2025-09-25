@@ -66,10 +66,25 @@ deploy_application() {
     local log_file
     log_file=$(create_deployment_log "$app_name" "deploy" "in_progress")
     
-    # Get current revision before deployment from ArgoCD history (more reliable)
+    # Get current working revision before deployment (actually deployed, not just synced)
+    local current_revision_sha
+    # Get the revision that's actually running in the cluster (from last successful operation)
+    current_revision_sha=$(argocd app get "$app_name" -o json | jq -r '.status.operationState.syncResult.revision // empty' || echo "unknown")
+    
+    # Fallback to sync revision if operation state is not available
+    if [[ -z "$current_revision_sha" || "$current_revision_sha" == "unknown" ]]; then
+        current_revision_sha=$(argocd app get "$app_name" -o json | jq -r '.status.sync.revision // "unknown"')
+    fi
+    
+    # Convert SHA to short form and find corresponding history ID
     local current_revision
-    # Get the current working revision (latest unique SHA before new deployment)
-    current_revision=$(argocd app history "$app_name" | tail -n +3 | awk '{print $7}' | sed 's/[()]//g' | awk '!seen[$0]++' | tail -1 || echo "unknown")
+    if [[ "$current_revision_sha" != "unknown" ]]; then
+        local short_sha="${current_revision_sha:0:7}"
+        current_revision=$(argocd app history "$app_name" | grep "$short_sha" | tail -1 | awk '{print $1}' || echo "unknown")
+        echo "📍 Found current deployment: SHA $short_sha → History ID $current_revision"
+    else
+        current_revision="unknown"
+    fi
     
     # Store pre-deployment metadata  
     set_metadata "deployment:argocd:${app_name}:previous_version" "$current_revision"
