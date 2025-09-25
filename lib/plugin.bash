@@ -3,6 +3,45 @@ set -euo pipefail
 
 PLUGIN_PREFIX="ARGOCD_DEPLOYMENT"
 
+# Authentication functions
+setup_argocd_auth() {
+    local server username password
+    
+    # Get credentials from plugin config or environment variables
+    server=$(plugin_read_config ARGOCD_SERVER "${ARGOCD_SERVER:-}")
+    username=$(plugin_read_config ARGOCD_USERNAME "${ARGOCD_USERNAME:-}")
+    password="${ARGOCD_PASSWORD:-}"
+    
+    # Validate required credentials
+    if [[ -z "$server" ]]; then
+        echo "❌ Error: ARGOCD_SERVER not configured"
+        echo "   Set via plugin config or ARGOCD_SERVER environment variable"
+        exit 1
+    fi
+    
+    if [[ -z "$username" ]]; then
+        echo "❌ Error: ARGOCD_USERNAME not configured"
+        echo "   Set via plugin config or ARGOCD_USERNAME environment variable"
+        exit 1
+    fi
+    
+    if [[ -z "$password" ]]; then
+        echo "❌ Error: ARGOCD_PASSWORD not available"
+        echo "   Must be set as environment variable (use secret management)"
+        exit 1
+    fi
+    
+    echo "🔐 Authenticating with ArgoCD server: $server"
+    
+    # Login to ArgoCD
+    if ! argocd login "$server" --username "$username" --password "$password" --insecure; then
+        echo "❌ Failed to authenticate with ArgoCD"
+        exit 1
+    fi
+    
+    echo "✅ Successfully authenticated with ArgoCD"
+}
+
 # Installation functions
 install_argocd_cli() {
     echo "📦 Installing ArgoCD CLI..."
@@ -102,54 +141,20 @@ validate_config() {
 check_argocd_connectivity() {
     echo "🔗 Checking ArgoCD connectivity..."
     
-    # Check if already authenticated
-    if argocd context &> /dev/null && argocd account get-user-info &> /dev/null; then
-        echo "✅ Using existing ArgoCD authentication"
-        return 0
-    fi
-    
-    # Get authentication configuration from environment variables (populated by pre-command hook)
-    local server="${ARGOCD_SERVER:-}"
-    local username="${ARGOCD_USERNAME:-}"
-    local password="${ARGOCD_PASSWORD:-}"
-    local token="${ARGOCD_TOKEN:-}"
-    
-    # Validate authentication parameters
-    if [[ -z "$server" ]]; then
-        echo "❌ Error: ArgoCD server not configured"
-        echo "   Please set argocd_server parameter or ARGOCD_SERVER environment variable"
+    # Check if we can get current context
+    if ! argocd context --current &> /dev/null; then
+        echo "❌ Error: Cannot connect to ArgoCD. Please ensure you are logged in."
+        echo "   Run: argocd login <server>"
         exit 1
     fi
     
-    # Check authentication method: token OR username+password
-    if [[ -n "$token" ]]; then
-        echo "🎫 Authenticating with ArgoCD token..."
-        if ! argocd login "$server" --auth-token "$token" --insecure; then
-            echo "❌ Error: Failed to authenticate with ArgoCD token"
-            exit 1
-        fi
-    elif [[ -n "$username" && -n "$password" ]]; then
-        echo "👤 Authenticating with ArgoCD username/password..."
-        if ! argocd login "$server" --username "$username" --password "$password" --insecure; then
-            echo "❌ Error: Failed to authenticate with ArgoCD username/password"
-            exit 1
-        fi
-    else
-        echo "❌ Error: ArgoCD authentication not configured"
-        echo "   Please provide either:"
-        echo "   - argocd_token (authentication token), OR"
-        echo "   - argocd_username AND argocd_password (username and password)"
-        echo "   - These can be plain text or secret references (vault:, aws-ssm:, etc.)"
-        exit 1
-    fi
-    
-    # Verify authentication worked
+    # Check if we can get user info
     if ! argocd account get-user-info &> /dev/null; then
-        echo "❌ Error: ArgoCD authentication verification failed"
+        echo "❌ Error: ArgoCD authentication failed. Please re-login."
         exit 1
     fi
     
-    echo "✅ ArgoCD authentication successful"
+    echo "✅ ArgoCD connectivity verified"
 }
 
 # Utility functions
@@ -173,14 +178,7 @@ get_metadata() {
 collect_app_logs() {
     local app_name="$1"
     local log_lines="$2"
-    
-    # Use Buildkite build directory if available, otherwise temp directory
-    local log_dir
-    if [[ -n "${BUILDKITE_BUILD_PATH:-}" ]]; then
-        log_dir="${BUILDKITE_BUILD_PATH}/argocd-logs"
-    else
-        log_dir="${TMPDIR:-/tmp}/argocd-logs-$$"
-    fi
+    local log_dir="argocd-logs"
     
     mkdir -p "$log_dir"
     

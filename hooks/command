@@ -20,11 +20,11 @@ main() {
     # Validate requirements
     validate_requirements
     
+    # Setup ArgoCD authentication
+    setup_argocd_auth
+    
     # Validate configuration
     validate_config "$app_name" "$mode" "$rollback_mode"
-    
-    # Check ArgoCD connectivity
-    check_argocd_connectivity
     
     case "$mode" in
         "deploy")

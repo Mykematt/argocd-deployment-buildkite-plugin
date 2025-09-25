@@ -12,6 +12,12 @@ configuration:
     app:
       type: string
       description: "ArgoCD application name"
+    argocd_server:
+      type: string
+      description: "ArgoCD server URL (can also use ARGOCD_SERVER env var)"
+    argocd_username:
+      type: string
+      description: "ArgoCD username (can also use ARGOCD_USERNAME env var)"
     mode:
       type: string
       description: "Operation mode: deploy or rollback"
@@ -84,19 +90,7 @@ configuration:
         pagerduty_integration_key:
           type: string
           description: "PagerDuty integration key"
-    argocd_token:
-      type: string
-      description: "ArgoCD authentication token"
-    argocd_server:
-      type: string
-      description: "ArgoCD server URL"
-    argocd_username:
-      type: string
-      description: "ArgoCD username"
-    argocd_password:
-      type: string
-      description: "Secret reference to ArgoCD password"
+      additionalProperties: false
   required:
     - app
-    - argocd_server
   additionalProperties: false
