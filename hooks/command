@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -eo pipefail
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
@@ -38,7 +38,7 @@ main() {
             ;;
         *)
             echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
-            exit 1
+            return 1
             ;;
     esac
 }
@@ -611,3 +611,5 @@ get_plugin_reference() {
 
 # Execute main function
 main "$@"
+exit_code=$?
+exit $exit_code

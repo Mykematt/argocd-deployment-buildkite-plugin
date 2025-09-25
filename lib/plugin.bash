@@ -1,11 +1,13 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 PLUGIN_PREFIX="ARGOCD_DEPLOYMENT"
 
 # Authentication functions
 setup_argocd_auth() {
-    local server username password
+    local server
+    local username
+    local password
     
     # Get credentials from plugin config or environment variables
     server=$(plugin_read_config ARGOCD_SERVER "${ARGOCD_SERVER:-}")
