@@ -493,15 +493,15 @@ steps:
           channels:
             - "$slack_channel"
           message: |
-            🚨 **ArgoCD Rollback Alert**
+            🚨 *ArgoCD Rollback Alert*
             
-            **Application:** \`$app_name\`
-            **Reason:** $reason
-            **From Revision:** \`$from_revision\`
-            **To Revision:** \`$to_revision\`
-            **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-            **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-            **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`
+            *Application:* \`$app_name\`
+            *Reason:* $reason
+            *From Revision:* \`$from_revision\`
+            *To Revision:* \`$to_revision\`
+            *Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
+            *Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+            *Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
 EOF
         )
         
