@@ -156,7 +156,18 @@ EOF
   run "$PWD"/hooks/command
 
   assert_failure
-  assert_output --partial "Error: Invalid rollback_mode 'invalid'. Must be 'auto' or 'manual'"
+  assert_output --partial "Error: Invalid rollback_mode 'invalid' for rollback mode. Must be 'auto' or 'manual'"
+}
+
+@test "Deploy mode with rollback_mode none succeeds" {
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MODE='deploy'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ROLLBACK_MODE='none'
+
+  run "$PWD"/hooks/command
+
+  assert_success
+  assert_output --partial 'Starting deployment for ArgoCD application: test-app'
 }
 
 @test "Health monitoring can be enabled" {
