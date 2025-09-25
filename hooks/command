@@ -66,11 +66,11 @@ deploy_application() {
     local log_file
     log_file=$(create_deployment_log "$app_name" "deploy" "in_progress")
     
-    # Get current revision before deployment
+    # Get current revision before deployment from ArgoCD history (more reliable)
     local current_revision
-    current_revision=$(get_current_revision "$app_name" || echo "unknown")
+    current_revision=$(argocd app history "$app_name" | tail -n +3 | head -2 | tail -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "unknown")
     
-    # Store pre-deployment metadata
+    # Store pre-deployment metadata  
     set_metadata "deployment:argocd:${app_name}:previous_version" "$current_revision"
     set_metadata "deployment:argocd:${app_name}:status" "deploying"
     
@@ -487,16 +487,18 @@ steps:
   - label: ":slack: Rollback Notification"
     command: "echo 'Rollback notification sent'"
     notify:
-      - slack: "$slack_channel"
-        message: |
-          🚨 **ArgoCD Rollback Alert**
-          
-          **Application:** \`$app_name\`
-          **Reason:** $reason
-          **From Revision:** \`$from_revision\`
-          **To Revision:** \`$to_revision\`
-          **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-          **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+      - slack:
+          channels:
+            - "$slack_channel"
+          message: |
+            🚨 **ArgoCD Rollback Alert**
+            
+            **Application:** \`$app_name\`
+            **Reason:** $reason
+            **From Revision:** \`$from_revision\`
+            **To Revision:** \`$to_revision\`
+            **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
+            **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
           **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`
 EOF
         )
@@ -508,7 +510,28 @@ EOF
     # Send email notification
     if [[ -n "$email" ]]; then
         echo "📧 Sending email notification..."
-        echo -e "$message" | mail -s "ArgoCD Rollback Alert: $app_name" "$email" || echo "⚠️  Failed to send email notification"
+        if ! command -v sendmail >/dev/null 2>&1; then
+            echo "📦 sendmail not found, attempting to install..."
+            if command -v apt-get >/dev/null 2>&1; then
+                # Ubuntu/Debian - install sendmail
+                apt-get update -qq && apt-get install -y sendmail-bin >/dev/null 2>&1 || echo "⚠️  Failed to install sendmail"
+            elif command -v apk >/dev/null 2>&1; then
+                # Alpine - should already have it, but just in case
+                apk add --no-cache ssmtp >/dev/null 2>&1 || echo "⚠️  Failed to install ssmtp"
+            fi
+        fi
+        
+        if command -v sendmail >/dev/null 2>&1; then
+            {
+                echo "To: $email"
+                echo "Subject: ArgoCD Rollback Alert: $app_name"
+                echo ""
+                echo -e "$message"
+            } | sendmail "$email" || echo "⚠️  Failed to send email notification via sendmail"
+        else
+            echo "⚠️  Could not install or find sendmail"
+            echo "📧 Email notification skipped - consider using Slack or webhook notifications instead"
+        fi
     fi
     
     # Send webhook notification
