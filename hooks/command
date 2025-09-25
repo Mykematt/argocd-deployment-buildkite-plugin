@@ -150,6 +150,7 @@ handle_deployment_failure() {
 execute_rollback() {
     local app_name="$1"
     local rollback_revision="$2"
+    local log_file="$3"
     local rollback_type="$4"
     
     echo "🔄 Starting $rollback_type rollback for ArgoCD application: $app_name"
@@ -414,9 +415,6 @@ EOF
     **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
     
     buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
-    
-    # Send rollback notification
-    send_rollback_notification "$app_name" "$from_revision" "$to_revision" "Automatic rollback triggered"
 }
 
 create_deployment_annotation() {
