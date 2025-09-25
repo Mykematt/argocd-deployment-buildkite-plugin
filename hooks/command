@@ -691,27 +691,36 @@ inject_rollback_decision_block() {
     echo "📋 Injecting rollback decision block step..."
     echo "🔍 Fetching recent deployment history..."
     
-    # Get recent revisions from ArgoCD history
+    # Get recent revisions from ArgoCD history with error handling
     local revision_options=""
     local count=0
-    while IFS= read -r history_line && [[ $count -lt 10 ]]; do
-        if [[ -n "$history_line" && "$history_line" != "ID"* ]]; then
-            local revision_id
-            local revision_date
-            local revision_hash
-            revision_id=$(echo "$history_line" | awk '{print $1}')
-            revision_date=$(echo "$history_line" | awk '{print $2, $3}')
-            revision_hash=$(echo "$history_line" | awk '{print $7}' | sed 's/[()]//g')
-            
-            if [[ -n "$revision_hash" && "$revision_hash" != "unknown" ]]; then
-                local short_hash=${revision_hash:0:7}
-                revision_options+="          - label: \"ID $revision_id: $short_hash ($revision_date)\"
+    local history_output
+    
+    # Try to get history with better error handling
+    if ! history_output=$(argocd app history "$app_name" 2>&1); then
+        echo "⚠️  Failed to fetch ArgoCD history: $history_output"
+        echo "📋 Using fallback with previous revision only"
+    else
+        echo "✅ Successfully fetched ArgoCD history"
+        while IFS= read -r history_line && [[ $count -lt 10 ]]; do
+            if [[ -n "$history_line" && "$history_line" != "ID"* ]]; then
+                local revision_id
+                local revision_date
+                local revision_hash
+                revision_id=$(echo "$history_line" | awk '{print $1}')
+                revision_date=$(echo "$history_line" | awk '{print $2, $3}')
+                revision_hash=$(echo "$history_line" | awk '{print $7}' | sed 's/[()]//g')
+                
+                if [[ -n "$revision_hash" && "$revision_hash" != "unknown" ]]; then
+                    local short_hash=${revision_hash:0:7}
+                    revision_options+="          - label: \"ID $revision_id: $short_hash ($revision_date)\"
             value: \"$revision_hash\"
 "
-                ((count++))
+                    ((count++))
+                fi
             fi
-        fi
-    done < <(argocd app history "$app_name" 2>/dev/null || echo "")
+        done <<< "$history_output"
+    fi
     
     # Fallback if no history found
     if [[ -z "$revision_options" ]]; then
@@ -780,7 +789,15 @@ $revision_options
 EOF
         )
         
-        echo "$pipeline_yaml" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject rollback decision block"
+        echo "📤 Uploading rollback decision pipeline..."
+        if echo "$pipeline_yaml" | buildkite-agent pipeline upload; then
+            echo "✅ Successfully injected rollback decision input step"
+        else
+            echo "❌ Failed to inject rollback decision block - pipeline upload failed"
+            echo "📋 Pipeline YAML that failed to upload:"
+            echo "$pipeline_yaml"
+            return 1
+        fi
 }
 
 # Execute main function
