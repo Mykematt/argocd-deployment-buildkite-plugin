@@ -216,17 +216,20 @@ execute_rollback() {
         echo "🚫 Disabling auto-sync..."
         {
             echo "=== Disabling Auto-Sync ==="
+            echo "Command: argocd app patch $app_name --patch '{\"spec\":{\"syncPolicy\":{\"automated\":null}}}'"
             argocd app patch "$app_name" --patch '{"spec":{"syncPolicy":{"automated":null}}}' 2>&1
             echo "Exit code: $?"
         } >> "$rollback_log_file"
         
         set +e
-        argocd app patch "$app_name" --patch '{"spec":{"syncPolicy":{"automated":null}}}'
+        patch_output=$(argocd app patch "$app_name" --patch '{"spec":{"syncPolicy":{"automated":null}}}' 2>&1)
         patch_exit_code=$?
         set -e
         
         if [[ $patch_exit_code -ne 0 ]]; then
-            echo "⚠️  Failed to disable auto-sync, proceeding anyway..."
+            echo "❌ Failed to disable auto-sync with exit code: $patch_exit_code"
+            echo "ArgoCD patch error output: $patch_output"
+            echo "⚠️  Proceeding with rollback anyway..."
         else
             echo "✅ Auto-sync disabled"
         fi
@@ -241,7 +244,7 @@ execute_rollback() {
         } >> "$rollback_log_file"
         
         set +e
-        argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout"
+        rollback_output=$(argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout" 2>&1)
         rollback_exit_code=$?
         set -e
         
@@ -251,7 +254,7 @@ execute_rollback() {
             # Step 3: Wait for rollback to complete
             echo "⏳ Waiting for rollback to complete..."
             set +e
-            argocd app wait "$app_name" --health --timeout "$timeout"
+            wait_output=$(argocd app wait "$app_name" --health --timeout "$timeout" 2>&1)
             wait_exit_code=$?
             set -e
             
@@ -260,10 +263,12 @@ execute_rollback() {
                 rollback_success=true
             else
                 echo "❌ Rollback wait failed with exit code: $wait_exit_code"
+                echo "ArgoCD wait error output: $wait_output"
                 rollback_success=false
             fi
         else
             echo "❌ ArgoCD rollback command failed with exit code: $rollback_exit_code"
+            echo "ArgoCD rollback error output: $rollback_output"
             rollback_success=false
         fi
         
