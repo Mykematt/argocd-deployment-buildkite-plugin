@@ -748,9 +748,9 @@ inject_rollback_decision_block() {
                     fi
                     
                     echo "✅ Adding revision option: ID=$rev_id, Hash=$short_hash"
-                    revision_options+="          - label: \"Revision $rev_id ($short_hash)\"
-            value: \"$rev_hash\"
-"
+                    revision_options+="
+          - label: \"Revision $rev_id ($short_hash)\"
+            value: \"$rev_hash\""
                     ((count++))
                 else
                     echo "⚠️  Skipping invalid revision: rev_id='$rev_id' rev_hash='$rev_hash'"
@@ -769,14 +769,14 @@ inject_rollback_decision_block() {
     if [[ -z "$revision_options" ]]; then
         echo "📋 Using fallback: previous revision only"
         if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
-            revision_options="          - label: \"Previous Version ($previous_revision)\"
-            value: \"$previous_revision\"
-"
+            revision_options="
+          - label: \"Previous Version ($previous_revision)\"
+            value: \"$previous_revision\""
         else
             echo "⚠️  No valid previous revision available, using manual input"
-            revision_options="          - label: \"Manual Input Required\"
-            value: \"manual\"
-"
+            revision_options="
+          - label: \"Manual Input Required\"
+            value: \"manual\""
         fi
     fi
     
@@ -790,25 +790,51 @@ steps:
     prompt: |
       Deployment failed for **$app_name**
       
-      **Available rollback options:**
-$revision_options      
       **Instructions:**
-      1. Unblock this step to continue with manual rollback to the previous revision
-      2. Or cancel the build if you want to keep the current (failed) state
+      1. Select the revision you want to rollback to from the dropdown below
+      2. Click "Continue" to proceed with the rollback
+      3. Or cancel the build if you want to keep the current (failed) state
       
       **Previous revision:** $previous_revision
+    fields:
+      - select: "Select Revision to Rollback To"
+        key: "rollback_revision"
+        hint: "Choose which revision to rollback to"
+        required: true
+        default: "$previous_revision"
+        options:$revision_options
     
   - label: ":arrow_backward: Execute Manual Rollback"
     command: |
-      echo "🔄 Executing manual rollback for $app_name to $previous_revision..."
+      selected_revision="\$(buildkite-agent meta-data get rollback_revision)"
+      echo "🔄 Executing manual rollback for $app_name to \$selected_revision..."
       
-      # Execute rollback using the plugin's rollback functionality
-      if argocd app rollback "$app_name" --revision "$previous_revision"; then
-        echo "✅ Successfully rolled back $app_name to $previous_revision"
-        send_rollback_notification "$app_name" "success" "$previous_revision"
+      # Execute rollback using correct ArgoCD CLI syntax
+      if argocd app rollback "$app_name" "\$selected_revision"; then
+        echo "✅ Successfully rolled back $app_name to \$selected_revision"
+        
+        # Send simple notification (without the plugin function)
+        echo "📢 Manual rollback completed successfully"
+        echo "   Application: $app_name"
+        echo "   Rolled back to: \$selected_revision"
+        
+        # Create success annotation
+        buildkite-agent annotate "✅ **Manual Rollback Successful**
+
+**Application:** \`$app_name\`
+**Rolled back to:** \`\$selected_revision\`
+**Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "success" --context "manual-rollback-$app_name" || true
+        
       else
-        echo "❌ Failed to rollback $app_name"
-        send_rollback_notification "$app_name" "failed" "$previous_revision"
+        echo "❌ Failed to rollback $app_name to \$selected_revision"
+        
+        # Create failure annotation
+        buildkite-agent annotate "❌ **Manual Rollback Failed**
+
+**Application:** \`$app_name\`
+**Target revision:** \`\$selected_revision\`
+**Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "error" --context "manual-rollback-$app_name" || true
+        
         exit 1
       fi
 EOF
