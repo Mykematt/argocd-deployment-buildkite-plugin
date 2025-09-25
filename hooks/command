@@ -467,15 +467,6 @@ send_rollback_notification() {
     if [[ -n "$slack_channel" ]]; then
         echo "📢 Sending Slack notification to $slack_channel..."
         
-        # Create annotation for visibility
-        local slack_annotation="🚨 **ArgoCD Rollback Alert**
-
-        **Application:** \`$app_name\`
-        **Reason:** $reason
-        **From:** \`$from_revision\`
-        **To:** \`$to_revision\`
-        **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})"
-                
         # Inject notification step using Buildkite's native Slack integration
         local notification_pipeline
         notification_pipeline=$(cat <<-EOF
@@ -622,7 +613,6 @@ handle_log_collection_and_artifacts() {
         fi
     fi
 }
-
 
 inject_rollback_decision_block() {
     local app_name="$1"
