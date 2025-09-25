@@ -460,7 +460,6 @@ send_rollback_notification() {
     local reason="$4"
     
     slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
-    email=$(plugin_read_config NOTIFICATIONS_EMAIL "")
     webhook_url=$(plugin_read_config NOTIFICATIONS_WEBHOOK_URL "")
     pagerduty_key=$(plugin_read_config NOTIFICATIONS_PAGERDUTY_INTEGRATION_KEY "")
     
@@ -478,9 +477,7 @@ send_rollback_notification() {
         **From:** \`$from_revision\`
         **To:** \`$to_revision\`
         **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})"
-        
-        buildkite-agent annotate "$slack_annotation" --style "warning" --context "rollback-notification-$app_name" || echo "⚠️  Failed to create rollback annotation"
-        
+                
         # Inject notification step using Buildkite's native Slack integration
         local notification_pipeline
         notification_pipeline=$(cat <<-EOF
@@ -506,33 +503,6 @@ EOF
         
         echo "$notification_pipeline" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject Slack notification step"
         echo "✅ Slack notification step injected for $slack_channel"
-    fi
-    
-    # Send email notification
-    if [[ -n "$email" ]]; then
-        echo "📧 Sending email notification..."
-        if ! command -v sendmail >/dev/null 2>&1; then
-            echo "📦 sendmail not found, attempting to install..."
-            if command -v apt-get >/dev/null 2>&1; then
-                # Ubuntu/Debian - install sendmail
-                apt-get update -qq && apt-get install -y sendmail-bin >/dev/null 2>&1 || echo "⚠️  Failed to install sendmail"
-            elif command -v apk >/dev/null 2>&1; then
-                # Alpine - should already have it, but just in case
-                apk add --no-cache ssmtp >/dev/null 2>&1 || echo "⚠️  Failed to install ssmtp"
-            fi
-        fi
-        
-        if command -v sendmail >/dev/null 2>&1; then
-            {
-                echo "To: $email"
-                echo "Subject: ArgoCD Rollback Alert: $app_name"
-                echo ""
-                echo -e "$message"
-            } | sendmail "$email" || echo "⚠️  Failed to send email notification via sendmail"
-        else
-            echo "⚠️  Could not install or find sendmail"
-            echo "📧 Email notification skipped - consider using Slack or webhook notifications instead"
-        fi
     fi
     
     # Send webhook notification
@@ -566,17 +536,6 @@ EOF
             --data "$payload" \
             'https://events.pagerduty.com/v2/enqueue' || echo "⚠️  Failed to send PagerDuty alert"
     fi
-    
-    local annotation="🔄 **ArgoCD Rollback**
-
-    **Application:** \`$app_name\`
-    **Failed Revision:** \`$from_revision\`
-    **Rolled Back To:** \`$to_revision\`
-    **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})
-    **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-    **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
-    
-    buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
 }
 
 create_deployment_annotation() {
@@ -590,18 +549,18 @@ create_deployment_annotation() {
         "success")
             annotation="✅ **ArgoCD Deployment Successful**
 
-            **Application:** \`$app_name\`
-            **Previous Version:** \`$previous_version\`
-            **Current Version:** \`$current_version\`
-            **Status:** \`$deployment_result\`
-            **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+**Application:** \`$app_name\`  
+**Previous Version:** \`$previous_version\`  
+**Current Version:** \`$current_version\`  
+**Status:** \`$deployment_result\`  
+**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
         "failed")
             annotation="❌ **ArgoCD Deployment Failed**
 
-            **Application:** \`$app_name\`
-            **Status:** \`$deployment_result\`
-            **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+**Application:** \`$app_name\`  
+**Status:** \`$deployment_result\`  
+**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
     esac
     
@@ -622,12 +581,12 @@ create_rollback_annotation() {
     
     local annotation="🔄 **ArgoCD Rollback**
 
-    **Application:** \`$app_name\`
-    **Failed Revision:** \`$from_revision\`
-    **Rolled Back To:** \`$to_revision\`
-    **Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})
-    **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-    **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
+**Application:** \`$app_name\`  
+**Failed Revision:** \`$from_revision\`  
+**Rolled Back To:** \`$to_revision\`  
+**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})  
+**Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`  
+**Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
     
     buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
 }

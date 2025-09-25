@@ -54,7 +54,7 @@ steps:
 - 🏥 **Health Monitoring**: Real-time application health checks via ArgoCD API
 - 📋 **Log Collection**: Automatic collection of ArgoCD application and pod logs
 - 📤 **Artifact Upload**: Upload deployment logs and artifacts to Buildkite
-- 🔔 **Notifications**: Multi-channel notifications (Slack, Email, Webhook, PagerDuty)
+- 🔔 **Notifications**: Multi-channel notifications (Slack, Webhook, PagerDuty)
 - 🚧 **Manual Rollback Blocks**: Optional manual intervention points
 - ⚡ **Auto Rollback**: Automatic rollback on deployment failures
 
@@ -132,10 +132,6 @@ Slack channel, username, or user ID for notifications using Buildkite's native S
 - Usernames: `@username`, `@devops-team`
 - User IDs: `U123ABC456` (found via User > More options > Copy member ID)
 
-##### `notifications.email` (string, optional)
-
-Email address for notifications.
-
 ##### `notifications.webhook_url` (string, optional)
 
 Custom webhook URL for notifications.
@@ -182,23 +178,6 @@ steps:
           rollback_mode: "manual"  # Human oversight
 ```
 
-### Deployment with Notifications
-
-Deploy with Slack and email notifications on rollback:
-
-```yaml
-steps:
-  - label: "🚀 Deploy with Notifications"
-    plugins:
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#v1.0.0:
-          app: "my-application"
-          notifications:
-            slack_channel: "#deployments"  # Channel name
-            # slack_channel: "@devops-lead"  # Username
-            # slack_channel: "U123ABC456"    # User ID
-            email: "devops@company.com"
-```
-
 ### Advanced Configuration
 
 Full configuration with all options:
@@ -214,8 +193,9 @@ steps:
           collect_logs: true
           upload_artifacts: true
           notifications:
-            slack_channel: "#deployments"
-            email: "devops@company.com"
+            slack_channel: "#deployments"  # Channel name
+            # slack_channel: "@devops-lead"  # Username
+            # slack_channel: "U123ABC456"    # User ID
             webhook_url: "https://your-webhook.com/notify"
             pagerduty_integration_key: "YOUR_PAGERDUTY_KEY"
 ```

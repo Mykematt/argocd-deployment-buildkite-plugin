@@ -81,9 +81,6 @@ configuration:
         slack_channel:
           type: string
           description: "Slack channel, username, or user ID for notifications (e.g., '#deployments', '@username', or 'U123ABC456')"
-        email:
-          type: string
-          description: "Email address for notifications"
         webhook_url:
           type: string
           description: "Custom webhook URL for notifications"
