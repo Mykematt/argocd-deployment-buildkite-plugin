@@ -68,7 +68,8 @@ deploy_application() {
     
     # Get current revision before deployment from ArgoCD history (more reliable)
     local current_revision
-    current_revision=$(argocd app history "$app_name" | tail -n +3 | head -2 | tail -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "unknown")
+    # Get the current working revision (latest unique SHA before new deployment)
+    current_revision=$(argocd app history "$app_name" | tail -n +3 | awk '{print $7}' | sed 's/[()]//g' | awk '!seen[$0]++' | tail -1 || echo "unknown")
     
     # Store pre-deployment metadata  
     set_metadata "deployment:argocd:${app_name}:previous_version" "$current_revision"
@@ -499,7 +500,7 @@ steps:
             **To Revision:** \`$to_revision\`
             **Build:** <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
             **Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-          **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`
+            **Branch:** \`${BUILDKITE_BRANCH:-unknown}\`
 EOF
         )
         
