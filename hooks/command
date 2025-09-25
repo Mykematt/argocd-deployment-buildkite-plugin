@@ -7,6 +7,20 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # shellcheck source=lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
 
+# Cleanup function
+cleanup() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo "🚨 Script exited with error code: $exit_code"
+        # Clean up any temporary files or processes if needed
+        # This helps prevent bash context corruption
+    fi
+    exit $exit_code
+}
+
+# Set up cleanup trap
+trap cleanup EXIT ERR
+
 # Main function
 main() {
     local app_name
@@ -182,26 +196,37 @@ execute_rollback() {
     timeout=$(plugin_read_config TIMEOUT "300")
     
     # Check if auto-sync is enabled
-    local sync_policy
-    sync_policy=$(argocd app get "$app_name" -o json | jq -r '.spec.syncPolicy.automated // empty')
+    sync_policy=$(argocd app get "$app_name" -o json | jq -r '.spec.syncPolicy.automated // empty' || echo "")
     
-    local rollback_command
+    # Execute rollback command directly based on sync policy
+    local rollback_success=false
     if [[ -n "$sync_policy" ]]; then
         echo "🔄 Auto-sync enabled - using sync command for rollback"
-        rollback_command="argocd app sync $app_name --revision $rollback_revision --timeout $timeout"
+        {
+            echo "=== Rollback Command Output ==="
+            echo "Command: argocd app sync $app_name --revision $rollback_revision --timeout $timeout"
+            argocd app sync "$app_name" --revision "$rollback_revision" --timeout "$timeout" 2>&1
+            echo "Exit code: $?"
+        } >> "$rollback_log_file"
+        
+        if argocd app sync "$app_name" --revision "$rollback_revision" --timeout "$timeout"; then
+            rollback_success=true
+        fi
     else
         echo "🔄 Auto-sync disabled - using rollback command"
-        rollback_command="argocd app rollback $app_name $rollback_revision --timeout $timeout"
+        {
+            echo "=== Rollback Command Output ==="
+            echo "Command: argocd app rollback $app_name $rollback_revision --timeout $timeout"
+            argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout" 2>&1
+            echo "Exit code: $?"
+        } >> "$rollback_log_file"
+        
+        if argocd app rollback "$app_name" "$rollback_revision" --timeout "$timeout"; then
+            rollback_success=true
+        fi
     fi
     
-    {
-        echo "=== Rollback Command Output ==="
-        echo "Command: $rollback_command"
-        eval "$rollback_command" 2>&1
-        echo "Exit code: $?"
-    } >> "$rollback_log_file"
-    
-    if eval "$rollback_command"; then
+    if [[ "$rollback_success" == "true" ]]; then
         # Update metadata with success
         set_metadata "deployment:argocd:${app_name}:current_version" "$rollback_revision"
         set_metadata "deployment:argocd:${app_name}:result" "rollback_success"
@@ -244,10 +269,6 @@ execute_rollback() {
 # Health monitoring functions
 monitor_application_health() {
     local app_name="$1"
-    local health_check_enabled
-    local health_check_interval
-    local health_check_timeout
-    
     health_check_enabled=$(plugin_read_config HEALTH_CHECK "true")
     health_check_interval=$(plugin_read_config HEALTH_CHECK_INTERVAL "30")
     health_check_timeout=$(plugin_read_config HEALTH_CHECK_TIMEOUT "300")
@@ -314,11 +335,6 @@ send_rollback_notification() {
     local from_revision="$2"
     local to_revision="$3"
     local reason="$4"
-    
-    local slack_channel
-    local email
-    local webhook_url
-    local pagerduty_key
     
     slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
     email=$(plugin_read_config NOTIFICATIONS_EMAIL "")
@@ -474,10 +490,6 @@ handle_log_collection_and_artifacts() {
     local app_name="$1"
     local deployment_log_file="$2"
     
-    local collect_logs
-    local upload_artifacts_enabled
-    local log_lines
-    
     collect_logs=$(plugin_read_config COLLECT_LOGS "false")
     upload_artifacts_enabled=$(plugin_read_config UPLOAD_ARTIFACTS "false")
     log_lines=$(plugin_read_config LOG_LINES "1000")
@@ -560,5 +572,3 @@ EOF
 
 # Execute main function
 main "$@"
-exit_code=$?
-exit $exit_code
