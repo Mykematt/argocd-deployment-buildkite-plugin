@@ -708,8 +708,9 @@ inject_rollback_decision_block() {
                         short_hash="$rev_hash"
                     fi
                     
-                    revision_options+="          - label: \"Revision $rev_id ($short_hash)\"
-            value: \"$rev_hash\""
+                revision_options+="          - label: \"Revision $rev_id ($short_hash)\"
+                    value: \"$rev_hash\"
+                "
                     ((count++))
                 fi
             fi
@@ -724,11 +725,13 @@ inject_rollback_decision_block() {
         echo "📋 Using fallback: previous revision only"
         if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
             revision_options="          - label: \"Previous Version ($previous_revision)\"
-            value: \"$previous_revision\""
+                value: \"$previous_revision\"
+            "
         else
             echo "⚠️  No valid previous revision available"
             revision_options="          - label: \"No Previous Version Available\"
-            value: \"none\""
+                value: \"none\"
+            "
         fi
     fi
     
