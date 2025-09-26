@@ -743,9 +743,9 @@ steps:
         required: true
         default: "rollback"
         options:
-          - label: "🔄 Rollback to Previous Version"
+          - label: ":repeat: Rollback to Previous Version"
             value: "rollback"
-          - label: "⚠️ Accept Failure (No Rollback)"
+          - label: ":warning: Accept Failure (No Rollback)"
             value: "accept"
       
       - select: "Rollback Target (if rollback selected)"
