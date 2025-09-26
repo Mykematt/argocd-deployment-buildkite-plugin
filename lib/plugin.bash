@@ -231,7 +231,6 @@ lookup_deployment_history_id() {
 # Log collection and artifact functions
 collect_app_logs() {
     local app_name="$1"
-    local log_lines="$2"
     local log_dir
     log_dir=$(mktemp -d)
     
