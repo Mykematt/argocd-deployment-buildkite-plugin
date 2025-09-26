@@ -775,11 +775,11 @@ $revision_options
       action="\$(buildkite-agent meta-data get rollback_action)"
       
       if [[ "\$action" == "accept" ]]; then
-        echo "⚠️ User chose to accept deployment failure"
-        echo "📋 No rollback will be performed"
+        echo ":warning: User chose to accept deployment failure"
+        echo ":clipboard: No rollback will be performed"
         
         # Create acceptance annotation
-        buildkite-agent annotate "⚠️ **Deployment Failure Accepted**
+        buildkite-agent annotate ":warning: **Deployment Failure Accepted**
 
 **Application:** \`$app_name\`
 **Action:** User chose to accept failure
@@ -787,33 +787,33 @@ $revision_options
 
 *The failed deployment has been left in place for debugging.*" --style "warning" --context "accept-failure-$app_name" || true
         
-        echo "✅ Pipeline completed - failure accepted"
+        echo ":white_check_mark: Pipeline completed - failure accepted"
         exit 0
       
       elif [[ "\$action" == "rollback" ]]; then
         selected_revision="\$(buildkite-agent meta-data get rollback_revision)"
-        echo "🔄 Executing manual rollback for $app_name to \$selected_revision..."
+        echo ":arrows_counterclockwise: Executing manual rollback for $app_name to \$selected_revision..."
         
         # Use helper function to get deployment history ID
         if history_id=\$(lookup_deployment_history_id "$app_name" "\$selected_revision"); then
-          echo "📍 Using deployment history ID: \$history_id for revision: \$selected_revision"
+          echo ":pushpin: Using deployment history ID: \$history_id for revision: \$selected_revision"
           
           # Execute rollback using deployment history ID
           if argocd app rollback "$app_name" "\$history_id"; then
-            echo "✅ Successfully rolled back $app_name to \$selected_revision"
+            echo ":white_check_mark: Successfully rolled back $app_name to \$selected_revision"
             
             # Create success annotation
-            buildkite-agent annotate "✅ **Manual Rollback Successful**
+            buildkite-agent annotate ":white_check_mark: **Manual Rollback Successful**
 
 **Application:** \`$app_name\`
 **Rolled back to:** \`\$selected_revision\`
 **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "success" --context "manual-rollback-$app_name" || true
           
           else
-            echo "❌ Failed to rollback $app_name to \$selected_revision"
+            echo ":x: Failed to rollback $app_name to \$selected_revision"
             
             # Create failure annotation
-            buildkite-agent annotate "❌ **Manual Rollback Failed**
+            buildkite-agent annotate ":x: **Manual Rollback Failed**
 
 **Application:** \`$app_name\`
 **Target revision:** \`\$selected_revision\`
@@ -822,12 +822,12 @@ $revision_options
             exit 1
           fi
         else
-          echo "❌ Could not find deployment history for revision \$selected_revision"
+          echo ":x: Could not find deployment history for revision \$selected_revision"
           exit 1
         fi
       
       else
-        echo "❌ Unknown action: \$action"
+        echo ":x: Unknown action: \$action"
         exit 1
       fi
 EOF
