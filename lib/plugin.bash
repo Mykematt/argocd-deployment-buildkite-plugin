@@ -213,18 +213,18 @@ lookup_deployment_history_id() {
     local app_name="$1"
     local git_revision="$2"
     
-    echo "🔍 Looking up deployment history ID for revision: $git_revision"
+    echo "🔍 Looking up deployment history ID for revision: $git_revision" >&2
     
     local short_hash="${git_revision:0:7}"
     local history_id
     history_id=$(argocd app history "$app_name" | grep "$short_hash" | tail -1 | awk '{print $1}' || echo "")
     
     if [[ -z "$history_id" ]]; then
-        echo "❌ Could not find deployment history ID for revision: $git_revision (short: $short_hash)"
+        echo "❌ Could not find deployment history ID for revision: $git_revision (short: $short_hash)" >&2
         return 1
     fi
     
-    echo "📍 Found deployment history ID: $history_id for revision: $git_revision"
+    echo "📍 Found deployment history ID: $history_id for revision: $git_revision" >&2
     echo "$history_id"
 }
 

@@ -173,7 +173,7 @@ deploy_application() {
         create_deployment_annotation "$app_name" "$current_revision" "$new_revision" "success"
         
         # Health checks only for auto rollback mode
-        if [[ "$rollback_mode" == "auto" ]]; then
+       if [[ "$rollback_mode" == "auto" ]]; then
             if ! monitor_application_health "$app_name"; then
                 echo "🚨 Health check failed after deployment"
                 previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
@@ -181,7 +181,15 @@ deploy_application() {
                 return  # Let handle_deployment_failure manage the exit
             fi
         else
-            echo "📋 Manual rollback mode - skipping health checks"
+            echo "📋 Manual rollback mode - checking health once without retry"
+            # Do a single quick health check for manual mode
+            if ! check_application_health "$app_name"; then
+                echo "❌ Application is unhealthy - manual intervention required"
+                echo "🚨 Health check failed after deployment"
+                previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
+                handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "health_check_failed"
+                return  # Let handle_deployment_failure manage the exit
+            fi
         fi
         
         # Collect logs and upload artifacts if enabled
