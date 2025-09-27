@@ -231,7 +231,6 @@ lookup_deployment_history_id() {
 # Log collection and artifact functions
 collect_app_logs() {
     local app_name="$1"
-    local log_lines="${2:-1000}"  # Default to 100 lines if not specified
     
     # Create temp directory and output its path to stdout
     local log_dir
@@ -239,7 +238,6 @@ collect_app_logs() {
     echo "$log_dir"  # This is the only output to stdout
     
     # All status messages go to stderr
-    echo "📋 Collecting logs for ArgoCD application: $app_name" >&2
     echo "📍 Log directory: $log_dir" >&2
     
     # Create logs directory
