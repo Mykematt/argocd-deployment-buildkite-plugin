@@ -208,6 +208,10 @@ get_metadata() {
     buildkite-agent meta-data get "$key" 2>/dev/null || echo ""
 }
 
+# ===================================================================
+# IMPORTANT: This function is duplicated in hooks/command (in the block step)
+# Any changes made here should also be made in the block step's implementation
+# ===================================================================
 # Helper function to lookup deployment history ID from git revision
 lookup_deployment_history_id() {
     local app_name="$1"
