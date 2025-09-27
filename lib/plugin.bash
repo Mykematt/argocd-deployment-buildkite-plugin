@@ -231,79 +231,69 @@ lookup_deployment_history_id() {
 # Log collection and artifact functions
 collect_app_logs() {
     local app_name="$1"
+    local log_lines="${2:-1000}"  # Default to 100 lines if not specified
+    
+    # Create temp directory and output its path to stdout
     local log_dir
     log_dir=$(mktemp -d)
+    echo "$log_dir"  # This is the only output to stdout
     
-    echo "📋 Collecting logs for ArgoCD application: $app_name"
-    echo "📍 Log directory: $log_dir"
+    # All status messages go to stderr
+    echo "📋 Collecting logs for ArgoCD application: $app_name" >&2
+    echo "📍 Log directory: $log_dir" >&2
+    
+    # Create logs directory
+    mkdir -p "$log_dir/pod_logs"
     
     # Collect ArgoCD application logs
     {
         echo "=== ArgoCD Application Status ==="
-        argocd app get "$app_name" --output yaml || echo "Failed to get app status"
+        argocd app get "$app_name" --output yaml 2>&1 || echo "Failed to get app status"
         echo ""
         
         echo "=== ArgoCD Application Events ==="
-        argocd app get "$app_name" --output json | jq -r '.status.conditions[]? | "[\(.lastTransitionTime)] \(.type): \(.message)"' || echo "No events found"
+        argocd app get "$app_name" --output json 2>/dev/null | \
+            jq -r '.status.conditions[]? | "[\(.lastTransitionTime)] \(.type): \(.message)"' 2>&1 || \
+            echo "No events found"
         echo ""
         
         echo "=== ArgoCD Deployment History ==="
-        argocd app history "$app_name" | head -20 || echo "Failed to get history"
-    } > "$log_dir/argocd-$app_name.log"
+        argocd app history "$app_name" 2>/dev/null | head -20 || echo "Failed to get history"
+    } > "$log_dir/argocd-$app_name.log" 2>&1
     
     # Collect ArgoCD managed resources and events (no kubectl needed)
-echo "🔍 Collecting ArgoCD managed resources and events..."
-
-{
-    echo "=== ArgoCD Managed Resources ==="
-    if argocd app resources "$app_name" 2>/dev/null; then
-        echo "✅ Successfully retrieved managed resources"
-    else
-        echo "❌ Failed to get managed resources"
-    fi
-    echo ""
+    echo "🔍 Collecting ArgoCD managed resources and events..." >&2
     
-    echo "=== ArgoCD Resource Tree ==="
-    if argocd app get "$app_name" --output json | jq -r '.status.resources[]? | "[\(.kind)] \(.name) - \(.status // "Unknown")"' 2>/dev/null; then
-        echo "✅ Successfully retrieved resource tree"  
-    else
-        echo "❌ Failed to get resource tree"
-    fi
-    echo ""
+    # Get application resources
+    argocd app resources "$app_name" --output json > "$log_dir/resources.json" 2>&1 || true
     
-    echo "=== ArgoCD Application Details ==="
-    if argocd app get "$app_name" --output json | jq -r '
-        "Sync Status: \(.status.sync.status // "Unknown")",
-        "Health Status: \(.status.health.status // "Unknown")",
-        "Sync Revision: \(.status.sync.revision // "Unknown")",
-        "Target Revision: \(.spec.source.targetRevision // "Unknown")",
-        "Repository: \(.spec.source.repoURL // "Unknown")",
-        "Path: \(.spec.source.path // ".")",
-        "Namespace: \(.spec.destination.namespace // "Unknown")"
-    ' 2>/dev/null; then
-        echo "✅ Successfully retrieved application details"
-    else
-        echo "❌ Failed to get application details" 
-    fi
-    echo ""
+    # Get application events
+    argocd app events "$app_name" > "$log_dir/events.log" 2>&1 || true
     
-    echo "=== ArgoCD Operation State ==="
-    if argocd app get "$app_name" --output json | jq -r '
-        if .status.operationState then
-            "Phase: \(.status.operationState.phase // "Unknown")",
-            "Message: \(.status.operationState.message // "No message")",
-            "Started: \(.status.operationState.startedAt // "Unknown")",
-            "Finished: \(.status.operationState.finishedAt // "Unknown")"
+    # Get pod logs if kubectl is available
+    if command -v kubectl &> /dev/null; then
+        echo "📝 Collecting pod logs..." >&2
+        local namespace
+        namespace=$(argocd app get "$app_name" --output json 2>/dev/null | \
+                   jq -r '.spec.destination.namespace // "default"' 2>/dev/null || echo "default")
+        
+        # Get logs for each pod in the namespace
+        if kubectl get ns "$namespace" &> /dev/null; then
+            kubectl get pods -n "$namespace" -o name 2>/dev/null | while read -r pod; do
+                local pod_name=${pod#pod/}
+                echo "   📄 $pod_name" >&2
+                kubectl logs -n "$namespace" "$pod_name" --tail="$log_lines" > "$log_dir/pod_logs/${pod_name}.log" 2>&1 || true
+            done
         else
-            "No operation state available"
-        end
-    ' 2>/dev/null; then
-        echo "✅ Successfully retrieved operation state"
+            echo "   ℹ️  Namespace '$namespace' not found or inaccessible" >&2
+        fi
     else
-        echo "❌ Failed to get operation state"
+        echo "   ℹ️  kubectl not available, skipping pod logs collection" >&2
     fi
-} > "$log_dir/argocd-resources-$app_name.log" 2>&1
     
+    echo "✅ Log collection complete" >&2
+    
+    # Output the log directory path (to stdout)
     echo "$log_dir"
 }
 
