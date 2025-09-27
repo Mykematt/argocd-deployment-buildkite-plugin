@@ -687,10 +687,10 @@ inject_rollback_decision_block() {
 
     echo "Injecting rollback decision block step..."
     echo "Fetching recent deployment history..."
-    
+
     # Get revision options from ArgoCD history
     local revision_options=""
-    
+
     # Try to get multiple revisions for user choice
     set +e
     if argocd app history "$app_name" > /tmp/argocd_history.txt 2>/dev/null; then
@@ -702,10 +702,10 @@ inject_rollback_decision_block() {
                 # Safely extract revision ID and hash
                 local rev_id=""
                 local rev_hash=""
-                
+
                 rev_id=$(echo "$line" | awk '{print $1}' 2>/dev/null || echo "")
                 rev_hash=$(echo "$line" | awk '{if (NF >= 7) print $7}' 2>/dev/null | tr -d '()' || echo "")
-                
+
                 # Only process if we have both values and they're valid
                 if [[ -n "$rev_id" && -n "$rev_hash" && "$rev_hash" != "unknown" && "$rev_hash" != "-" ]]; then
                     local short_hash=""
@@ -714,17 +714,17 @@ inject_rollback_decision_block() {
                     else
                         short_hash="$rev_hash"
                     fi
-                    
+
                     # Sanitize strings for YAML
                     local safe_rev_id
                     local safe_short_hash
                     safe_rev_id=$(sanitize_yaml_string "$rev_id")
                     safe_short_hash=$(sanitize_yaml_string "$short_hash")
-                    
+
                     # Sanitize the rev_hash as well
                     local safe_rev_hash
                     safe_rev_hash=$(sanitize_yaml_string "$rev_hash")
-                    
+
                     revision_options="${revision_options}
           - label: \"Revision ${safe_rev_id} (${safe_short_hash})\"
             value: \"${safe_rev_hash}\""
@@ -736,7 +736,7 @@ inject_rollback_decision_block() {
         echo "Processed $count revision options"
     fi
     set -e
-    
+
     # Fallback if no options found - we still need at least one option
     if [[ -z "$revision_options" ]]; then
         echo "No ArgoCD history found, using fallback option"
@@ -744,11 +744,11 @@ inject_rollback_decision_block() {
           - label: \"No Previous Version Available\"
             value: \"none\""
     fi
-    
+
     # Sanitize app name for YAML
     local safe_app_name
     safe_app_name=$(sanitize_yaml_string "$app_name")
-    
+
     # Create the pipeline YAML with simplified prompt
     local pipeline_yaml
     pipeline_yaml=$(cat << 'EOF'
@@ -776,7 +776,7 @@ steps:
         hint: "Choose which revision to rollback to"
         required: false
         options:REVISION_OPTIONS_PLACEHOLDER
-
+     
   - label: "Execute Decision"
     command: |
       # Define the helper function
