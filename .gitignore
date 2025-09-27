@@ -1,7 +1,7 @@
 .vscode
 node_modules
 tests/mocks/
-
+hooks/Command_backup.sh
 # Test artifacts and logs
 deployment-*.log
 argocd-logs/
