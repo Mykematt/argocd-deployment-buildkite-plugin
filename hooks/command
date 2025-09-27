@@ -598,18 +598,12 @@ create_deployment_annotation() {
         "success")
             annotation="✅ **ArgoCD Deployment Successful**
 
-**Application:** \`$app_name\`
-**Previous Version:** \`$previous_version\`
-**Current Version:** \`$current_version\`
-**Status:** \`$deployment_result\`
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+**Application:** \`$app_name\`\n**Previous Version:** \`$previous_version\`\n**Current Version:** \`$current_version\`\n**Status:** \`$deployment_result\`\n**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
         "failed")
             annotation="❌ **ArgoCD Deployment Failed**
 
-**Application:** \`$app_name\`
-**Status:** \`$deployment_result\`
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+**Application:** \`$app_name\`\n**Status:** \`$deployment_result\`\n**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             ;;
     esac
     
