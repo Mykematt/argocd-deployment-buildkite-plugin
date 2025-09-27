@@ -797,19 +797,72 @@ steps:
   - label: "Execute Decision"
     command: |
       # Define the helper function
+      # Helper function to run argocd commands with proper server configuration
+      run_argocd() {
+        local cmd="$1"
+        shift
+        
+        # Use the ARGOCD_SERVER environment variable if set, otherwise use the one from plugin config
+        local server="${ARGOCD_SERVER:-${argocd_server:-}}"
+        
+        if [ -n "$server" ]; then
+          argocd "$cmd" --server "$server" "$@"
+        else
+          argocd "$cmd" "$@"
+        fi
+      }
+      
       lookup_deployment_history_id() {
         local app_name="\$1"
         local target_revision="\$2"
         
-        argocd app history "\$app_name" 2>/dev/null | awk -v rev="\$target_revision" '
-          \$7 ~ rev { gsub(/[()]/,"",\$1); print \$1; exit }
-        ' 2>/dev/null
+        echo "Looking up deployment history for app: \$app_name, revision: \$target_revision"
+        
+        # Get the full history and find the line with our target revision
+        local history_output
+        history_output=$(run_argocd app history "\$app_name" 2>&1)
+        
+        if [ $? -ne 0 ]; then
+          echo "Failed to get deployment history: \$history_output" >&2
+          echo "ARGOCD_SERVER: ${ARGOCD_SERVER:-Not set}" >&2
+          echo "argocd_server: ${argocd_server:-Not set in plugin config}" >&2
+          return 1
+        fi
+        
+        echo "Full history output:"
+        echo "\$history_output"
+        
+        # Extract the history ID for the target revision
+        # Sample output format:
+        # ID  DATE                           REVISION
+        # 1   2023-01-01 12:00:00 +0000 UTC  abc1234
+        local history_id
+        history_id=$(echo "\$history_output" | \
+          awk -v rev="\$target_revision" '
+            # Skip header line and match the revision in the 3rd column
+            NR > 1 && $3 == rev {
+              # The ID is the first column
+              print $1;
+              found = 1;
+              exit 0;
+            }
+            END { if (!found) exit 1; }
+          ' 2>/dev/null)
+        
+        if [ $? -ne 0 ]; then
+          echo "Failed to find revision \$target_revision in deployment history" >&2
+          echo "Available revisions:"
+          echo "\$history_output" | awk 'NR > 1 {print "- " $3}' >&2
+          return 1
+        fi
+        
+        echo "Found deployment ID: \$history_id for revision: \$target_revision"
+        echo "\$history_id"
       }
       
       action="\$(buildkite-agent meta-data get rollback_action)"
       
       if [[ "\$action" == "accept" ]]; then
-        echo "User chose to accept deployment failure"
         echo "No rollback will be performed"
         
         buildkite-agent annotate "**Deployment Failure Accepted**
