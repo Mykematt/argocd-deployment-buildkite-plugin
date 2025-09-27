@@ -699,87 +699,30 @@ inject_rollback_decision_block() {
     echo "📋 Manual rollback mode: injecting block step for user decision..."
     echo "Fetching recent deployment history..."
     
-    # Get revision options from ArgoCD history
-    local revision_options=""
+    # Create a temporary file for the pipeline
+    local temp_file
+    temp_file=$(mktemp)
     
-    # Try to get multiple revisions for user choice
-    set +e
-    if argocd app history "$app_name" > /tmp/argocd_history.txt 2>/dev/null; then
-        echo "Got ArgoCD history, processing revisions..."
-        local count=0
-        while IFS= read -r line && [[ $count -lt 5 ]]; do
-            # Skip empty lines and headers
-            if [[ -n "$line" && "$line" != "ID"* && "$line" != *"----"* ]]; then
-                # Safely extract revision ID and hash
-                local rev_id=""
-                local rev_hash=""
-                
-                rev_id=$(echo "$line" | awk '{print $1}' 2>/dev/null || echo "")
-                rev_hash=$(echo "$line" | awk '{if (NF >= 7) print $7}' 2>/dev/null | tr -d '()' || echo "")
-                
-                # Only process if we have both values and they're valid
-                if [[ -n "$rev_id" && -n "$rev_hash" && "$rev_hash" != "unknown" && "$rev_hash" != "-" ]]; then
-                    local short_hash=""
-                    if [[ ${#rev_hash} -ge 7 ]]; then
-                        short_hash="${rev_hash:0:7}"
-                    else
-                        short_hash="$rev_hash"
-                    fi
-                    
-                    # Sanitize strings for YAML
-                    local safe_rev_id
-                    local safe_short_hash
-                    safe_rev_id=$(sanitize_yaml_string "$rev_id")
-                    safe_short_hash=$(sanitize_yaml_string "$short_hash")
-                    
-                    # Sanitize the rev_hash as well
-                    local safe_rev_hash
-                    safe_rev_hash=$(sanitize_yaml_string "$rev_hash")
-                    
-                    revision_options="${revision_options}
-          - label: \"Revision ${safe_rev_id} (${safe_short_hash})\"
-            value: \"${safe_rev_hash}\""
-                    ((count++))
-                fi
-            fi
-        done < /tmp/argocd_history.txt
-        rm -f /tmp/argocd_history.txt
-        echo "Processed $count revision options"
-    fi
-    set -e
-    
-    # Fallback to previous revision if no options found
-    if [[ -z "$revision_options" ]]; then
-        echo "Using fallback: previous revision only"
-        if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
-            revision_options="
-          - label: \"Previous Version ($previous_revision)\"
-            value: \"$previous_revision\""
-        else
-            echo "No valid previous revision available"
-            revision_options="
-          - label: \"No Previous Version Available\"
-            value: \"none\""
-        fi
-    fi
-    
-    # Sanitize app name for YAML
+    # Sanitize app name for YAML (remove problematic characters)
     local safe_app_name
-    safe_app_name=$(sanitize_yaml_string "$app_name")
+    safe_app_name=$(echo "$app_name" | sed 's/[^a-zA-Z0-9_-]//g')
     
-    # Create the pipeline YAML with proper variable escaping
-    local pipeline_yaml
-    pipeline_yaml=$(cat << 'EOF'
+    # Sanitize previous revision
+    local safe_prev_rev
+    safe_prev_rev=$(echo "$previous_revision" | sed 's/[^a-zA-Z0-9_-]//g')
+    
+    # Start building the pipeline YAML
+    cat > "$temp_file" << EOF
 steps:
   - block: "Deployment Failed - Choose Action"
     prompt: |
-      Deployment failed for **APP_NAME_PLACEHOLDER**
+      Deployment failed for **${safe_app_name}**
       
       **Choose your action:**
       1. **Rollback** to a previous version (recommended)
       2. **Accept Failure** and keep current state for debugging
       
-      **Previous revision:** PREV_REV_PLACEHOLDER
+      **Previous revision:** ${safe_prev_rev}
     fields:
       - select: "Action"
         key: "rollback_action"
@@ -795,8 +738,47 @@ steps:
         key: "rollback_revision"
         hint: "Choose which revision to rollback to"
         required: false
-        default: "PREV_REV_PLACEHOLDER"
-        options:REVISION_OPTIONS_PLACEHOLDER
+        default: "${safe_prev_rev}"
+        options:
+EOF
+
+    # Add revision options
+    echo "          - label: \"Previous Version (${safe_prev_rev})\"" >> "$temp_file"
+    echo "            value: \"${safe_prev_rev}\"" >> "$temp_file"
+    
+    # Try to get additional revisions from ArgoCD history
+    set +e
+    if argocd app history "$app_name" > /tmp/argocd_history.txt 2>/dev/null; then
+        echo "Got ArgoCD history, processing revisions..."
+        local count=0
+        while IFS= read -r line && [[ $count -lt 4 ]]; do
+            # Skip empty lines and headers
+            if [[ -n "$line" && "$line" != "ID"* && "$line" != *"----"* ]]; then
+                local rev_id rev_hash short_hash
+                rev_id=$(echo "$line" | awk '{print $1}' 2>/dev/null | sed 's/[^a-zA-Z0-9_-]//g')
+                rev_hash=$(echo "$line" | awk '{if (NF >= 7) print $7}' 2>/dev/null | tr -d '()' | sed 's/[^a-zA-Z0-9_-]//g')
+                
+                # Only process if we have both values and they're different from previous
+                if [[ -n "$rev_id" && -n "$rev_hash" && "$rev_hash" != "unknown" && "$rev_hash" != "-" && "$rev_hash" != "$safe_prev_rev" ]]; then
+                    if [[ ${#rev_hash} -ge 7 ]]; then
+                        short_hash="${rev_hash:0:7}"
+                    else
+                        short_hash="$rev_hash"
+                    fi
+                    
+                    echo "          - label: \"Revision ${rev_id} (${short_hash})\"" >> "$temp_file"
+                    echo "            value: \"${rev_hash}\"" >> "$temp_file"
+                    ((count++))
+                fi
+            fi
+        done < /tmp/argocd_history.txt
+        rm -f /tmp/argocd_history.txt
+        echo "Processed $count additional revision options"
+    fi
+    set -e
+    
+    # Continue with the rest of the pipeline
+    cat >> "$temp_file" << EOF
 
   - label: "Execute Decision"
     command: |
@@ -805,67 +787,64 @@ steps:
       
       # Helper function to find deployment history ID
       lookup_deployment_history_id() {
-        local app_name="$1"
-        local target_revision="$2"
+        local app_name="\$1"
+        local target_revision="\$2"
         
         # Get the first 7 characters of the git revision (short hash)
-        local short_hash="${target_revision:0:7}"
+        local short_hash="\${target_revision:0:7}"
         
         # Get the history from ArgoCD and find the matching revision
         local history_output
-        if ! history_output=$(argocd app history "$app_name" 2>/dev/null); then
-          echo "[ERROR] Failed to get deployment history for $app_name" >&2
+        if ! history_output=\$(argocd app history "\$app_name" 2>/dev/null); then
+          echo "[ERROR] Failed to get deployment history for \$app_name" >&2
           return 1
         fi
         
         # Find the history ID (first column) for the matching revision
         local history_id
-        history_id=$(echo "$history_output" | grep -m1 "$short_hash" | awk '{gsub(/[()]/, "", $1); print $1}')
+        history_id=\$(echo "\$history_output" | grep -m1 "\$short_hash" | awk '{gsub(/[()]/, "", \$1); print \$1}')
         
-        if [[ -z "$history_id" ]]; then
-          echo "[ERROR] No deployment history found for revision: $target_revision" >&2
+        if [[ -z "\$history_id" ]]; then
+          echo "[ERROR] No deployment history found for revision: \$target_revision" >&2
           return 1
         fi
         
-        echo "$history_id"
+        echo "\$history_id"
         return 0
       }
       
-      # Get the app name and previous revision from environment
-      app_name="APP_NAME_PLACEHOLDER"
-      
       # Get the user's decision
-      action="$(buildkite-agent meta-data get rollback_action)"
+      action="\$(buildkite-agent meta-data get rollback_action)"
       
-      if [[ "$action" == "accept" ]]; then
-            echo "[SUCCESS] User chose to accept deployment failure"
+      if [[ "\$action" == "accept" ]]; then
+        echo "[SUCCESS] User chose to accept deployment failure"
         
         buildkite-agent annotate "**Deployment Failure Accepted**
 
-**Application:** \`$app_name\`
+**Application:** \\\`${safe_app_name}\\\`
 **Action:** User chose to accept failure
 
-*The failed deployment has been left in place for debugging.*" --style "warning" --context "accept-failure-$app_name" || true
+*The failed deployment has been left in place for debugging.*" --style "warning" --context "accept-failure-${safe_app_name}" || true
         
         echo "No rollback will be performed"
         exit 0
-      elif [[ "$action" == "rollback" ]]; then
-        selected_revision="$(buildkite-agent meta-data get rollback_revision)"
-        echo "[ROLLBACK] Executing rollback to revision: $selected_revision"
+      elif [[ "\$action" == "rollback" ]]; then
+        selected_revision="\$(buildkite-agent meta-data get rollback_revision)"
+        echo "[ROLLBACK] Executing rollback to revision: \$selected_revision"
         
-        if history_id=$(lookup_deployment_history_id "$app_name" "$selected_revision"); then
-          echo "[INFO] Found history ID for rollback: $history_id"
+        if history_id=\$(lookup_deployment_history_id "${safe_app_name}" "\$selected_revision"); then
+          echo "[INFO] Found history ID for rollback: \$history_id"
           
-          echo "[ROLLBACK] Rolling back to history ID: $history_id"
-          if argocd app rollback "$app_name" "$history_id"; then
+          echo "[ROLLBACK] Rolling back to history ID: \$history_id"
+          if argocd app rollback "${safe_app_name}" "\$history_id"; then
             echo "[SUCCESS] Rollback initiated successfully"
             
             buildkite-agent annotate "**Rollback Initiated**
 
-**Application:** \`$app_name\`
-**Target Revision:** $selected_revision
-**History ID:** $history_id
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+**Application:** \\\`${safe_app_name}\\\`
+**Target Revision:** \$selected_revision
+**History ID:** \$history_id
+**Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
 *The rollback has been initiated. It may take a few moments to complete.*" --style "success" --context "rollback-success" || true
             
@@ -875,44 +854,26 @@ steps:
             
             buildkite-agent annotate "**Rollback Failed**
 
-**Application:** \`$app_name\`
-**Target Revision:** $selected_revision
-**History ID:** $history_id
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+**Application:** \\\`${safe_app_name}\\\`
+**Target Revision:** \$selected_revision
+**History ID:** \$history_id
+**Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
 *Please check the logs for more details.*" --style "error" --context "rollback-failed" || true
             
             exit 1
           fi
         else
-          echo "[ERROR] Could not find deployment history for revision: $selected_revision"
+          echo "[ERROR] Could not find deployment history for revision: \$selected_revision"
           echo "Available revisions:"
-          argocd app history "$app_name" 2>/dev/null || true
+          argocd app history "${safe_app_name}" 2>/dev/null || true
           exit 1
         fi
       else
-        echo "[ERROR] Unknown action: $action"
+        echo "[ERROR] Unknown action: \$action"
         exit 1
       fi
 EOF
-    )
-    
-    # Replace all placeholders in the pipeline YAML
-    pipeline_yaml="${pipeline_yaml//APP_NAME_PLACEHOLDER/$safe_app_name}"
-    pipeline_yaml="${pipeline_yaml//PREV_REV_PLACEHOLDER/$previous_revision}"
-    
-    # Handle revision options carefully to avoid newline issues
-    local temp_file
-    temp_file=$(mktemp)
-    echo "$pipeline_yaml" > "$temp_file"
-    
-    # Replace the revision options line by line to handle newlines properly
-    awk -v options="$revision_options" '
-        /REVISION_OPTIONS_PLACEHOLDER/ { 
-            gsub(/REVISION_OPTIONS_PLACEHOLDER/, options)
-        }
-        { print }
-    ' "$temp_file" > "${temp_file}.new" && mv "${temp_file}.new" "$temp_file"
     
     # Upload the pipeline
     echo "[UPLOAD] Uploading rollback decision pipeline..."
