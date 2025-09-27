@@ -804,7 +804,11 @@ steps:
         ' 2>/dev/null
       }
       
-      action="$(buildkite-agent meta-data get rollback_action)"
+      # Try to get the rollback action, default to empty if not set
+      if ! action="$(buildkite-agent meta-data get rollback_action 2>/dev/null)"; then
+        echo "No rollback action set, this should be handled by the block step"
+        exit 0
+      fi
       
       if [[ "$action" == "accept" ]]; then
         echo "User chose to accept deployment failure"
