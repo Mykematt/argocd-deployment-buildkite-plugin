@@ -853,7 +853,7 @@ EOF
     temp_file=$(mktemp)
     echo "$pipeline_yaml" > "$temp_file"
     
-    # Replace the revision options line by line to handle newlines properly
+    # Replace the revision options line by line to handle newlines well
     awk -v options="$revision_options" '
         /REVISION_OPTIONS_PLACEHOLDER/ { 
             gsub(/REVISION_OPTIONS_PLACEHOLDER/, options)
