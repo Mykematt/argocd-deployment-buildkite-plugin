@@ -314,10 +314,9 @@ collect_app_logs() {
     
     # Get application events
     echo "📋 Application-level events:" >&2
-    argocd app events "$app_name" --output wide | head -50 > "$log_dir/application-events.log" 2>&1 || true
-    cat "$log_dir/application-events.log" | while read -r event; do
+    argocd app events "$app_name" --output wide 2>&1 | head -50 | tee "$log_dir/application-events.log" | while read -r event; do
         echo "   $event" >&2
-    done
+    done || true
     
     echo "" >&2
     echo "✅ Log and diagnostic information collected" >&2
