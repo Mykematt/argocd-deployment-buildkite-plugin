@@ -100,7 +100,7 @@ main() {
                 fi
                 echo "🤖 Auto rollback mode: using previous revision $target_revision"
             fi
-            execute_rollback "$app_name" "$target_revision" "explicit"
+execute_rollback "$app_name" "$target_revision" "explicit"
             ;;
     esac
 }
@@ -231,19 +231,23 @@ handle_deployment_failure() {
             handle_log_collection_and_artifacts "$app_name" "$log_file"
             exit 1
         fi
-        execute_rollback "$app_name" "$previous_revision" "automatic"
+        execute_rollback "$app_name" "$previous_revision" "automatic" "$log_file"
     elif [[ "$rollback_mode" == "manual" ]]; then
         echo "📋 Manual rollback mode: injecting block step for user decision..."
         inject_rollback_decision_block "$app_name" "$previous_revision"
         
         # Collect logs and upload artifacts for manual review
+        # shellcheck disable=SC2317
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
         # Send notification about failure
+        # shellcheck disable=SC2317
         send_rollback_notification "$app_name" "current" "$previous_revision" "$failure_reason"
         
+        # shellcheck disable=SC2317
         echo "⏸️  Pipeline paused for manual rollback decision"
         # Exit successfully - the block step will handle the rollback decision
+        # shellcheck disable=SC2317
         exit 0
     elif [[ "$rollback_mode" == "none" ]]; then
         echo "⚠️ None rollback mode: accepting deployment failure without rollback..."
@@ -265,12 +269,18 @@ execute_rollback() {
     local app_name="$1"
     local rollback_revision="$2"
     local rollback_type="$3"  # "automatic" or "explicit"
+    local log_file="${4:-}"  # Optional log file parameter
     
     echo "🔄 Starting $rollback_type rollback for ArgoCD application: $app_name"
     
-    # Create rollback log
+    # Use provided log file or create a new one if not provided
     local rollback_log_file
-    rollback_log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
+    if [[ -n "$log_file" && -f "$log_file" ]]; then
+        rollback_log_file="$log_file"
+        echo "=== Rollback: $rollback_type ===" >> "$rollback_log_file"
+    else
+        rollback_log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
+    fi
     
     # Get current (failed) revision
     local current_revision
@@ -716,8 +726,7 @@ inject_rollback_decision_block() {
                     fi
 
                     # Sanitize strings for YAML
-                    local safe_rev_id
-                    local safe_short_hash
+                    local safe_rev_id safe_short_hash safe_rev_hash
                     safe_rev_id=$(sanitize_yaml_string "$rev_id")
                     safe_short_hash=$(sanitize_yaml_string "$short_hash")
 
@@ -755,7 +764,7 @@ inject_rollback_decision_block() {
 steps:
   - block: "Deployment Failed - Choose Action"
     prompt: |
-      DEPLOYMENT FAILED FOR APP_NAME_PLACEHOLDER
+      DEPLOYMENT FAILED FOR ${safe_app_name}
       
       CHOOSE YOUR ACTION:
       1. ROLLBACK to a previous version (recommended)
@@ -781,65 +790,65 @@ steps:
     command: |
       # Define the helper function
       lookup_deployment_history_id() {
-        local app_name="\$1"
-        local target_revision="\$2"
+        local app_name="\\\$1"
+        local target_revision="\\\$2"
         
-        argocd app history "\$app_name" 2>/dev/null | awk -v rev="\$target_revision" '
-          \$7 ~ rev { gsub(/[()]/,"",\$1); print \$1; exit }
+        argocd app history "\\\$app_name" 2>/dev/null | awk -v rev="\\\$target_revision" '
+          \\\$7 ~ rev { gsub(/[()]/,"",\\\$1); print \\\$1; exit }
         ' 2>/dev/null
       }
       
-      action="\$(buildkite-agent meta-data get rollback_action)"
+      action="\\\$(buildkite-agent meta-data get rollback_action)"
       
-      if [[ "\$action" == "accept" ]]; then
+      if [[ "\\\$action" == "accept" ]]; then
         echo "User chose to accept deployment failure"
         echo "No rollback will be performed"
         
         buildkite-agent annotate "**Deployment Failure Accepted**
 
-      **Application:** \`APP_NAME_PLACEHOLDER\`
-      **Action:** User chose to accept failure
-      **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+**Application:** \\\`${safe_app_name}\\\`
+**Action:** User chose to accept failure
+**Timestamp:** \\\$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
-      *The failed deployment has been left in place for debugging.*" --style "warning" --context "accept-failure-APP_NAME_PLACEHOLDER" || true
+*The failed deployment has been left in place for debugging.*" --style "warning" --context "accept-failure-${safe_app_name}" || true
         
         echo "Pipeline completed - failure accepted"
         exit 0
-      
-      elif [[ "\$action" == "rollback" ]]; then
-        selected_revision="\$(buildkite-agent meta-data get rollback_revision)"
-        echo "Executing manual rollback for APP_NAME_PLACEHOLDER to \$selected_revision..."
         
-        if history_id=\$(lookup_deployment_history_id "APP_NAME_PLACEHOLDER" "\$selected_revision"); then
-          echo "Using deployment history ID: \$history_id for revision: \$selected_revision"
+      elif [[ "\\\$action" == "rollback" ]]; then
+        selected_revision="\\\$(buildkite-agent meta-data get rollback_revision)"
+        echo "Executing manual rollback for ${safe_app_name} to \\\$selected_revision..."
+        
+        if history_id=\\\$(lookup_deployment_history_id "${safe_app_name}" "\\\$selected_revision"); then
+          echo "Using deployment history ID: \\\$history_id for revision: \\\$selected_revision"
           
-          if argocd app rollback "APP_NAME_PLACEHOLDER" "\$history_id"; then
-            echo "Successfully rolled back APP_NAME_PLACEHOLDER to \$selected_revision"
+          if argocd app rollback "${safe_app_name}" "\\\$history_id"; then
+            echo "Successfully rolled back ${safe_app_name} to \\\$selected_revision"
             
             buildkite-agent annotate "**Manual Rollback Successful**
 
-      **Application:** \`APP_NAME_PLACEHOLDER\`
-      **Rolled back to:** \`\$selected_revision\`
-      **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "success" --context "manual-rollback-APP_NAME_PLACEHOLDER" || true
-          
+**Application:** \\\`${safe_app_name}\\\`
+**Rolled back to:** \\\`\\\$selected_revision\\\`
+**Timestamp:** \\\$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "success" --context "manual-rollback-${safe_app_name}" || true
+            
           else
-            echo "Failed to rollback APP_NAME_PLACEHOLDER to \$selected_revision"
+            echo "Failed to rollback ${safe_app_name} to \\\$selected_revision"
             
             buildkite-agent annotate "**Manual Rollback Failed**
 
-      **Application:** \`APP_NAME_PLACEHOLDER\`
-      **Rolled back to:** \`\$selected_revision\`
-      **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "error" --context "manual-rollback-APP_NAME_PLACEHOLDER" || true
+**Application:** \\\`${safe_app_name}\\\`
+**Rolled back to:** \\\`\\\$selected_revision\\\`
+**Timestamp:** \\\$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "error" --context "manual-rollback-${safe_app_name}" || true
             
             exit 1
           fi
         else
-          echo "Could not find deployment history for revision \$selected_revision"
+          echo "Could not find deployment history for revision \\\$selected_revision"
           exit 1
         fi
-      
+        
       else
-        echo "Unknown action: \$action"
+        echo "Unknown action: \\\$action"
         exit 1
       fi
 EOF
