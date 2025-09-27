@@ -100,7 +100,7 @@ main() {
                 fi
                 echo "🤖 Auto rollback mode: using previous revision $target_revision"
             fi
-execute_rollback "$app_name" "$target_revision" "explicit" "$log_file"
+execute_rollback "$app_name" "$target_revision" "explicit"
             ;;
     esac
 }
