@@ -259,19 +259,8 @@ collect_app_logs() {
         argocd app history "$app_name" 2>/dev/null | head -20 || echo "Failed to get history"
     } > "$log_dir/argocd-$app_name.log" 2>&1
     
-    # Collect ArgoCD managed resources and events (no kubectl needed)
-    echo "🔍 Collecting ArgoCD managed resources and events..." >&2
-    
-    # Get application resources
-    argocd app resources "$app_name" --output json > "$log_dir/resources.json" 2>&1 || true
-    
-    # Get application events
-    argocd app events "$app_name" > "$log_dir/events.log" 2>&1 || true
-    
-    # Get application resources and events using ArgoCD
-    echo "📝 Collecting application resources and events..." >&2
-    
     # Get detailed application resources with status
+    echo "🔍 Collecting detailed application resources..." >&2
     if ! argocd app get "$app_name" --output json > "$log_dir/application-details.json" 2>/dev/null; then
         echo "   ⚠️  Failed to get application details" >&2
     else
@@ -279,19 +268,59 @@ collect_app_logs() {
         jq -r '.status.resources[]? | "\(.kind)/\(.namespace)/\(.name): \(.status) - \(.health.status // "unknown")"' "$log_dir/application-details.json" \
             > "$log_dir/resource-status.log" 2>/dev/null || true
     fi
+
+    # Get pod logs and container status
+    echo "📡 Collecting pod and container information..." >&2
+    if [ -f "$log_dir/application-details.json" ]; then
+        # Extract all pod resources
+        jq -r '.status.resources[]? | select(.kind == "Pod") | "\(.namespace)/\(.name)"' "$log_dir/application-details.json" 2>/dev/null | \
+        while read -r pod; do
+            local namespace="${pod%%/*}"
+            local pod_name="${pod#*/}"
+            
+            if [[ -z "$namespace" || -z "$pod_name" ]]; then
+                continue
+            fi
+            
+            echo "   📦 Pod: $namespace/$pod_name" >&2
+            
+            # Get pod logs
+            echo "      📄 Getting logs for pod $pod_name" >&2
+            argocd app logs "$app_name" --kind "Pod" --namespace "$namespace" --resource-name "$pod_name" --tail 100 \
+                > "$log_dir/pod_logs/pod-${namespace}-${pod_name//\//-}.log" 2>&1 || \
+                echo "      ⚠️  Failed to get logs for pod $pod_name" >&2
+            
+            # Get container status
+            echo "      📦 Container status:" >&2
+            jq -r --arg ns "$namespace" --arg pn "$pod_name" \
+                '.status.resources[]? | select(.kind == "Pod" and .namespace == $ns and .name == $pn) | "\(.name) - Status: \(.status) - Health: \(.health.status // "unknown")"' \
+                "$log_dir/application-details.json" 2>/dev/null | while read -r status; do
+                echo "         $status" >&2
+            done
+            
+            # Get pod events
+            echo "      ⚡ Pod events:" >&2
+            argocd app events "$app_name" --resource-kind "Pod" --resource-namespace "$namespace" --resource-name "$pod_name" 2>/dev/null | \
+                head -20 2>&1 | while read -r event; do
+                echo "         $event" >&2
+            done || echo "         No events found" >&2
+            
+            echo "" >&2
+            
+        done
+    else
+        echo "   ⚠️  Could not collect pod details - application details not available" >&2
+    fi
     
     # Get application events
-    echo "   📄 Application events" >&2
-    argocd app events "$app_name" > "$log_dir/application-events.log" 2>&1 || true
+    echo "📋 Application-level events:" >&2
+    argocd app events "$app_name" --output wide | head -50 > "$log_dir/application-events.log" 2>&1 || true
+    cat "$log_dir/application-events.log" | while read -r event; do
+        echo "   $event" >&2
+    done
     
-    # Get application resource tree
-    echo "   🌳 Application resource tree" >&2
-    argocd app get "$app_name" --output json 2>/dev/null | \
-        jq -r '.status.resources[]? | "\(.kind).\(.name) [\(.namespace)] - \(.status)"' \
-        > "$log_dir/resource-tree.log" 2>/dev/null || true
-    
-    echo "   ℹ️  Pod-level logs require direct cluster access (kubectl) which is not available in this environment" >&2
-    echo "   ℹ️  Basic resource status and events have been collected in the logs" >&2
+    echo "" >&2
+    echo "✅ Log and diagnostic information collected" >&2
     
     echo "✅ Log collection complete" >&2
     
