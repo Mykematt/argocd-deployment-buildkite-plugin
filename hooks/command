@@ -650,12 +650,29 @@ handle_log_collection_and_artifacts() {
     
     if [[ "$collect_logs" == "true" ]]; then
         echo "📋 Log collection enabled, gathering ArgoCD application logs..."
+        
+        # Create a temporary file to capture the log directory path
+        local temp_file
+        temp_file=$(mktemp)
+        
+        # Run collect_app_logs and capture the directory path
+        # Use tail -1 to ensure we only get the last line (the directory path)
+        collect_app_logs "$app_name" "$log_lines" > "$temp_file" 2>&1 || true
+        
+        # Read the log directory path from the file
         local log_dir
-        log_dir=$(collect_app_logs "$app_name" "$log_lines")
+        log_dir=$(tail -1 "$temp_file")
+        rm -f "$temp_file"
+        
+        # Verify the directory exists
+        if [[ -z "$log_dir" || ! -d "$log_dir" ]]; then
+            echo "⚠️  Failed to create log directory or directory is invalid" >&2
+            return 1
+        fi
         
         # Copy deployment log to the log directory
         if [[ -f "$deployment_log_file" ]]; then
-            cp "$deployment_log_file" "$log_dir/"
+            cp "$deployment_log_file" "$log_dir/" || true
         fi
         
         if [[ "$upload_artifacts_enabled" == "true" ]]; then

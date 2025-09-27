@@ -270,26 +270,30 @@ collect_app_logs() {
     # Get application events
     argocd app events "$app_name" > "$log_dir/events.log" 2>&1 || true
     
-    # Get pod logs if kubectl is available
-    if command -v kubectl &> /dev/null; then
-        echo "📝 Collecting pod logs..." >&2
-        local namespace
-        namespace=$(argocd app get "$app_name" --output json 2>/dev/null | \
-                   jq -r '.spec.destination.namespace // "default"' 2>/dev/null || echo "default")
-        
-        # Get logs for each pod in the namespace
-        if kubectl get ns "$namespace" &> /dev/null; then
-            kubectl get pods -n "$namespace" -o name 2>/dev/null | while read -r pod; do
-                local pod_name=${pod#pod/}
-                echo "   📄 $pod_name" >&2
-                kubectl logs -n "$namespace" "$pod_name" --tail="$log_lines" > "$log_dir/pod_logs/${pod_name}.log" 2>&1 || true
-            done
-        else
-            echo "   ℹ️  Namespace '$namespace' not found or inaccessible" >&2
-        fi
+    # Get application resources and events using ArgoCD
+    echo "📝 Collecting application resources and events..." >&2
+    
+    # Get detailed application resources with status
+    if ! argocd app get "$app_name" --output json > "$log_dir/application-details.json" 2>/dev/null; then
+        echo "   ⚠️  Failed to get application details" >&2
     else
-        echo "   ℹ️  kubectl not available, skipping pod logs collection" >&2
+        # Extract resource status information
+        jq -r '.status.resources[]? | "\(.kind)/\(.namespace)/\(.name): \(.status) - \(.health.status // "unknown")"' "$log_dir/application-details.json" \
+            > "$log_dir/resource-status.log" 2>/dev/null || true
     fi
+    
+    # Get application events
+    echo "   📄 Application events" >&2
+    argocd app events "$app_name" > "$log_dir/application-events.log" 2>&1 || true
+    
+    # Get application resource tree
+    echo "   🌳 Application resource tree" >&2
+    argocd app get "$app_name" --output json 2>/dev/null | \
+        jq -r '.status.resources[]? | "\(.kind).\(.name) [\(.namespace)] - \(.status)"' \
+        > "$log_dir/resource-tree.log" 2>/dev/null || true
+    
+    echo "   ℹ️  Pod-level logs require direct cluster access (kubectl) which is not available in this environment" >&2
+    echo "   ℹ️  Basic resource status and events have been collected in the logs" >&2
     
     echo "✅ Log collection complete" >&2
     
