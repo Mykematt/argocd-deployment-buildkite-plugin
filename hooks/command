@@ -685,10 +685,8 @@ sanitize_yaml_string() {
 inject_rollback_decision_block() {
     local app_name="$1"
     local previous_revision="$2"
-    local backtick_open='\\`'
-    local backtick_close='\\`'
-    local app_annotation="**Application:** ${backtick_open}$app_name${backtick_close}"
-    local rollback_annotation="**Rolled back to:** ${backtick_open}\$selected_revision${backtick_close}"
+    local backtick_open='`'
+    local backtick_close='`'
 
     echo "Injecting rollback decision block step..."
     echo "Fetching recent deployment history..."
@@ -699,8 +697,8 @@ inject_rollback_decision_block() {
     # Try to get multiple revisions for user choice
     set +e
     if argocd app history "$app_name" > /tmp/argocd_history.txt 2>/dev/null; then
-    echo "Got ArgoCD history, processing revisions..."
-    local count=0
+        echo "Got ArgoCD history, processing revisions..."
+        local count=0
         while IFS= read -r line && [[ $count -lt 5 ]]; do
             # Skip empty lines and headers
             if [[ -n "$line" && "$line" != "ID"* && "$line" != *"----"* ]]; then
@@ -764,7 +762,7 @@ inject_rollback_decision_block() {
     safe_app_name=$(sanitize_yaml_string "$app_name")
     
     local pipeline_yaml
-    pipeline_yaml=$(cat <<-EOF
+    pipeline_yaml=$(cat <<EOF
 steps:
   - block: "Deployment Failed - Choose Action"
     prompt: |
@@ -804,7 +802,7 @@ steps:
         # Create acceptance annotation
         buildkite-agent annotate "**Deployment Failure Accepted**
 
-$app_annotation
+**Application:** ${backtick_open}$app_name${backtick_close}
 **Action:** User chose to accept failure
 **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
@@ -828,8 +826,8 @@ $app_annotation
             # Create success annotation
             buildkite-agent annotate "**Manual Rollback Successful**
 
-$app_annotation
-$rollback_annotation
+**Application:** ${backtick_open}$app_name${backtick_close}
+**Rolled back to:** ${backtick_open}\$selected_revision${backtick_close}
 **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "success" --context "manual-rollback-$app_name" || true
           
           else
@@ -838,8 +836,8 @@ $rollback_annotation
             # Create failure annotation
             buildkite-agent annotate "**Manual Rollback Failed**
 
-$app_annotation
-$rollback_annotation
+**Application:** ${backtick_open}$app_name${backtick_close}
+**Rolled back to:** ${backtick_open}\$selected_revision${backtick_close}
 **Timestamp:** \$(date -u '+%Y-%m-%d %H:%M:%S UTC')" --style "error" --context "manual-rollback-$app_name" || true
             
             exit 1
