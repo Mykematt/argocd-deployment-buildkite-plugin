@@ -66,8 +66,10 @@ steps:
 - 📋 **Log Collection**: Automatic collection of ArgoCD application and pod logs
 - 📤 **Artifact Upload**: Upload deployment logs and artifacts to Buildkite
 - 🔔 **Notifications**: Slack notifications via Buildkite integration
-- 🚧 **Manual Rollback Blocks**: Optional manual intervention points
+- 🚧 **Manual Rollback Workflow**: Interactive block steps for manual rollback decisions
 - ⚡ **Auto Rollback**: Automatic rollback on deployment failures
+- 🎯 **Smart Rollback Logic**: Temporarily disables auto-sync during rollbacks to prevent conflicts
+- 📊 **Comprehensive Annotations**: Beautiful success/failure annotations with detailed information
 
 ## Configuration Options
 
@@ -88,14 +90,34 @@ Operation mode. Defaults to `"deploy"`.
 
 #### `rollback_mode` (string)
 
-Rollback mode when `mode` is `"rollback"`. Defaults to `"auto"`.
+Rollback mode for handling deployment failures.
 
-- `auto`: Automatic rollback to previous version
-- `manual`: Manual rollback (requires user intervention)
+- **For `mode: "deploy"`**: Defaults to `"auto"`
+  - `auto`: Automatic rollback to previous version on health check failure
+  - `manual`: Manual rollback with interactive block step for user decision
+- **For `mode: "rollback"`**: Required, no default
+  - `auto`: Rollback to previous version
+  - `manual`: Rollback to specific revision with user confirmation
 
 #### `timeout` (number)
 
 Timeout in seconds for ArgoCD operations. Defaults to `300`. Must be between 30 and 3600 seconds.
+
+#### `argocd_server` (string)
+
+ArgoCD server URL. Can also be set via `ARGOCD_SERVER` environment variable.
+
+#### `argocd_username` (string)
+
+ArgoCD username. Can also be set via `ARGOCD_USERNAME` environment variable.
+
+#### `target_revision` (string)
+
+Target revision for rollback operations. Accepts ArgoCD History IDs or Git commit SHAs.
+
+#### `health_check` (boolean)
+
+Enable health monitoring after deployment. Defaults to `false`.
 
 #### `health_check_interval` (number)
 
@@ -117,14 +139,6 @@ Number of log lines to collect. Defaults to `1000`. Must be between 100 and 1000
 
 Upload logs and deployment artifacts. Defaults to `false`.
 
-#### `manual_rollback_block` (boolean)
-
-Add manual rollback block step after successful deployment. Defaults to `false`.
-
-#### `block_timeout` (number)
-
-Manual block timeout in minutes. Defaults to `60`. Must be between 5 and 1440 minutes.
-
 #### `notifications` (object)
 
 Notification settings for rollback events.
@@ -145,44 +159,65 @@ Safe deployments with automatic rollback on health check failures:
 
 ```yaml
 steps:
-  - plugins:
-      - argocd_deployment#v1.0.0:
+  - label: "🚀 Deploy Application"
+    plugins:
+      - secrets#v1.0.0:
+          variables:
+            ARGOCD_PASSWORD: argocd_password
+      - github.com/your-org/argocd-deployment-buildkite-plugin:
           app: "my-app"
-          # rollback_mode: auto (default)
-```
-
-### Development: Manual Control
-
-Disable auto-rollback for investigation, use explicit rollback when needed:
-
-```yaml
-# Later: Manual rollback pipeline
-steps:
-  - plugins:
-      - argocd_deployment#v1.0.0:
-          app: "my-app"
-          mode: "rollback"
-          rollback_mode: "manual"  # Human oversight
-```
-
-### Advanced Configuration
-
-Full configuration with all options:
-
-```yaml
-steps:
-  - plugins:
-      - argocd_deployment#v1.0.0:
-          app: "my-application"
+          argocd_server: "https://argocd.example.com"
+          argocd_username: "admin"
           mode: "deploy"
-          timeout: 300
+          rollback_mode: "auto"  # Automatic rollback on failure
+          health_check: true
+          collect_logs: true
+          upload_artifacts: true
+```
+
+### Development: Manual Rollback Control
+
+Manual rollback workflow with interactive block steps for user decision:
+
+```yaml
+steps:
+  - label: "🚫 Deploy with Manual Rollback"
+    plugins:
+      - secrets#v1.0.0:
+          variables:
+            ARGOCD_PASSWORD: argocd_password
+      - github.com/your-org/argocd-deployment-buildkite-plugin:
+          app: "my-app"
+          argocd_server: "https://argocd.example.com"
+          argocd_username: "admin"
+          mode: "deploy"
+          rollback_mode: "manual"  # Interactive rollback decision
           health_check: true
           collect_logs: true
           upload_artifacts: true
           notifications:
-            slack_channel: "#deployments"  # Channel name
-            # slack_channel: "@devops-lead"  # Username
-            # slack_channel: "U123ABC456"    # User ID
+            slack_channel: "#deployments"
+```
+
+### Manual Rollback Operation
+
+Explicit rollback to a specific revision:
+
+```yaml
+steps:
+  - label: "🔄 Manual Rollback"
+    plugins:
+      - secrets#v1.0.0:
+          variables:
+            ARGOCD_PASSWORD: argocd_password
+      - github.com/your-org/argocd-deployment-buildkite-plugin:
+          app: "my-app"
+          argocd_server: "https://argocd.example.com"
+          argocd_username: "admin"
+          mode: "rollback"
+          target_revision: "123"  # ArgoCD History ID or Git SHA
+          collect_logs: true
+          upload_artifacts: true
 ```
 
 ## Compatibility
@@ -197,14 +232,30 @@ steps:
 
 ## Workflow
 
-1. **Validation**: Plugin validates ArgoCD connectivity and configuration
-2. **Pre-deployment**: Captures current application state and revision
-3. **Deployment/Rollback**: Executes ArgoCD sync or rollback operation
-4. **Health Monitoring**: Monitors application health via ArgoCD API (if enabled)
-5. **Log Collection**: Collects ArgoCD and pod logs (if enabled)
-6. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
-7. **Notifications**: Sends notifications on rollback events
-8. **Manual Blocks**: Optionally injects manual rollback decision points
+### Deploy Mode
+
+1. **Validation**: Plugin validates ArgoCD connectivity and application existence
+2. **Pre-deployment**: Captures current application state and revision for rollback
+3. **Deployment**: Executes ArgoCD sync operation
+4. **Health Monitoring**: Monitors application health via ArgoCD API (always enabled)
+   - **Auto mode**: Completes full health check cycle, then automatic rollback on failure
+   - **Manual mode**: Fails immediately on first failure to save time, then interactive block step
+5. **Failure Handling**:
+   - **Auto mode**: Automatic rollback to previous stable version with smart rollback logic (auto-sync management)
+   - **Manual mode**: Interactive block step for user decision
+6. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
+7. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
+8. **Notifications**: Sends Slack notifications on rollback events
+9. **Annotations**: Creates beautiful success/failure annotations with detailed information
+
+### Rollback Mode
+
+1. **Validation**: Plugin validates ArgoCD connectivity and target revision
+2. **Rollback Execution**: Executes ArgoCD rollback to specified revision
+3. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
+4. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
+5. **Notifications**: Sends Slack notifications on rollback events
+6. **Annotations**: Creates beautiful success/failure annotations with detailed information
 
 ## 👩‍💻 Contributing
 

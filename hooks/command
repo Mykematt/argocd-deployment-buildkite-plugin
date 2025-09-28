@@ -78,8 +78,6 @@ main() {
     # Setup ArgoCD authentication
     setup_argocd_auth
     
-    # Note: Configuration validation completed inline above (lines 32-73)
-    
     case "$mode" in
         "deploy")
             deploy_application "$app_name" "$rollback_mode"
@@ -123,8 +121,7 @@ deploy_application() {
     current_revision=$(get_current_stable_deployment "$app_name")
     
     # Store pre-deployment metadata  
-    set_metadata "deployment:argocd:${app_name}:previous_version" "$current_revision"
-    set_metadata "deployment:argocd:${app_name}:status" "deploying"
+    set_deployment_metadata "$app_name" "deploying" "" "" "$current_revision"
     
     # Execute deployment
     local timeout
@@ -147,9 +144,7 @@ deploy_application() {
         new_revision=$(get_current_revision "$app_name" || echo "unknown")
         
         # Update metadata with success
-        set_metadata "deployment:argocd:${app_name}:current_version" "$new_revision"
-        set_metadata "deployment:argocd:${app_name}:result" "success"
-        set_metadata "deployment:argocd:${app_name}:status" "deployed"
+        set_deployment_metadata "$app_name" "deployed" "success" "$new_revision"
         
         # Update log with success
         echo "=== Deployment Result: SUCCESS ===" >> "$log_file"
@@ -158,24 +153,19 @@ deploy_application() {
         # Create annotation
         create_deployment_annotation "$app_name" "$current_revision" "$new_revision" "success"
         
-        # Health checks only for auto rollback mode
-       if [[ "$rollback_mode" == "auto" ]]; then
-            if ! monitor_application_health "$app_name"; then
-                echo "🚨 Health check failed after deployment"
-                previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
-                handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "health_check_failed"
-                return  # Let handle_deployment_failure manage the exit
-            fi
+        # Health checks with different retry behavior based on rollback mode
+        local retry_enabled
+        if [[ "$rollback_mode" == "auto" ]]; then
+            retry_enabled="true"
         else
-            echo "📋 Manual rollback mode - checking health once without retry"
-            # Do a single quick health check for manual mode
-            if ! check_application_health "$app_name"; then
-                echo "❌ Application is unhealthy - manual intervention required"
-                echo "🚨 Health check failed after deployment"
-                previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
-                handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "health_check_failed"
-                return  # Let handle_deployment_failure manage the exit
-            fi
+            retry_enabled="false"
+        fi
+        
+        if ! monitor_application_health "$app_name" "$retry_enabled"; then
+            echo "🚨 Health check failed after deployment"
+            previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
+            handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "health_check_failed"
+            return  # Let handle_deployment_failure manage the exit
         fi
         
         # Collect logs and upload artifacts if enabled
@@ -199,8 +189,7 @@ handle_deployment_failure() {
     local failure_reason="$5"
     
     # Update metadata with failure
-    set_metadata "deployment:argocd:${app_name}:result" "failed"
-    set_metadata "deployment:argocd:${app_name}:status" "failed"
+    set_deployment_metadata "$app_name" "failed" "failed"
     set_metadata "deployment:argocd:${app_name}:failure_reason" "$failure_reason"
     
     # Update log with failure
@@ -260,9 +249,7 @@ execute_rollback() {
     echo "⏪ Rolling back from $current_revision to $rollback_revision..."
     
     # Store rollback metadata
-    set_metadata "deployment:argocd:${app_name}:rollback_from" "$current_revision"
-    set_metadata "deployment:argocd:${app_name}:rollback_to" "$rollback_revision"
-    set_metadata "deployment:argocd:${app_name}:status" "rolling_back"
+    set_rollback_metadata "$app_name" "rolling_back" "" "$current_revision" "$rollback_revision"
     
     # Execute rollback using helper function
     local timeout
@@ -384,9 +371,7 @@ execute_rollback() {
     # Handle rollback result
     if [[ "$rollback_success" == "true" ]]; then
         # Update metadata with success
-        set_metadata "deployment:argocd:${app_name}:current_version" "$rollback_revision"
-        set_metadata "deployment:argocd:${app_name}:result" "rollback_success"
-        set_metadata "deployment:argocd:${app_name}:status" "rolled_back"
+        set_deployment_metadata "$app_name" "rolled_back" "rollback_success" "$rollback_revision"
         
         # Update log with success
         echo "=== Rollback Result: SUCCESS ===" >> "$rollback_log_file"
@@ -405,8 +390,7 @@ execute_rollback() {
         echo "   Rolled to:  $rollback_revision"
     else
         # Update metadata with failure
-        set_metadata "deployment:argocd:${app_name}:result" "rollback_failed"
-        set_metadata "deployment:argocd:${app_name}:status" "rollback_failed"
+        set_deployment_metadata "$app_name" "rollback_failed" "rollback_failed"
         
         # Update log with failure
         echo "=== Rollback Result: FAILED ===" >> "$rollback_log_file"
@@ -422,10 +406,26 @@ execute_rollback() {
     fi
 }
 
-# Health monitoring functions (only used for deploy + auto rollback)
+# Health monitoring functions
 monitor_application_health() {
     local app_name="$1"
+    local retry_enabled="${2:-true}"  # Default to true for backward compatibility
     
+    if [[ "$retry_enabled" == "false" ]]; then
+        echo "📋 Manual rollback mode - checking health once without retry"
+        check_application_health "$app_name"
+        health_exit_code=$?
+        
+        if [[ $health_exit_code -eq 0 ]]; then
+            echo "✅ Application health check passed"
+            return 0
+        else
+            echo "❌ Application is unhealthy - manual intervention required"
+            return $health_exit_code
+        fi
+    fi
+    
+    # Auto rollback mode - full health monitoring with retries
     health_check_interval=$(plugin_read_config HEALTH_CHECK_INTERVAL "30")
     health_check_timeout=$(plugin_read_config HEALTH_CHECK_TIMEOUT "300")
     
@@ -639,12 +639,8 @@ inject_rollback_decision_block() {
     fi
     
     # Get connection details NOW
-    local server
-    local username
     local timeout
     local timestamp
-    server=$(plugin_read_config ARGOCD_SERVER "${ARGOCD_SERVER:-}")
-    username=$(plugin_read_config ARGOCD_USERNAME "${ARGOCD_USERNAME:-}")
     timeout=$(plugin_read_config TIMEOUT "300")
     
     # Pre-compute timestamp to avoid command substitution in Layer 3

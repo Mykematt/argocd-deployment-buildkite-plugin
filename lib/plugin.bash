@@ -444,3 +444,48 @@ function plugin_read_config() {
   local default="${2:-}"
   echo "${!var:-$default}"
 }
+
+# Metadata helper functions
+set_deployment_metadata() {
+    local app_name="$1"
+    local status="$2"
+    local result="${3:-}"
+    local current_version="${4:-}"
+    local previous_version="${5:-}"
+    
+    set_metadata "deployment:argocd:${app_name}:status" "$status"
+    
+    if [[ -n "$result" ]]; then
+        set_metadata "deployment:argocd:${app_name}:result" "$result"
+    fi
+    
+    if [[ -n "$current_version" ]]; then
+        set_metadata "deployment:argocd:${app_name}:current_version" "$current_version"
+    fi
+    
+    if [[ -n "$previous_version" ]]; then
+        set_metadata "deployment:argocd:${app_name}:previous_version" "$previous_version"
+    fi
+}
+
+set_rollback_metadata() {
+    local app_name="$1"
+    local status="$2"
+    local result="${3:-}"
+    local rollback_from="${4:-}"
+    local rollback_to="${5:-}"
+    
+    set_metadata "deployment:argocd:${app_name}:status" "$status"
+    
+    if [[ -n "$result" ]]; then
+        set_metadata "deployment:argocd:${app_name}:result" "$result"
+    fi
+    
+    if [[ -n "$rollback_from" ]]; then
+        set_metadata "deployment:argocd:${app_name}:rollback_from" "$rollback_from"
+    fi
+    
+    if [[ -n "$rollback_to" ]]; then
+        set_metadata "deployment:argocd:${app_name}:rollback_to" "$rollback_to"
+    fi
+}
