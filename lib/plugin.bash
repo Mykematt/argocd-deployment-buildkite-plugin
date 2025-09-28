@@ -449,14 +449,14 @@ function plugin_read_config() {
 set_deployment_metadata() {
     local app_name="$1"
     local status="$2"
-    local result="${3:-}"
+    local result_value="${3:-}"
     local current_version="${4:-}"
     local previous_version="${5:-}"
     
     set_metadata "deployment:argocd:${app_name}:status" "$status"
     
-    if [[ -n "$result" ]]; then
-        set_metadata "deployment:argocd:${app_name}:result" "$result"
+    if [[ -n "$result_value" ]]; then
+        set_metadata "deployment:argocd:${app_name}:result" "$result_value"
     fi
     
     if [[ -n "$current_version" ]]; then
@@ -471,14 +471,14 @@ set_deployment_metadata() {
 set_rollback_metadata() {
     local app_name="$1"
     local status="$2"
-    local result="${3:-}"
+    local result_value="${3:-}"
     local rollback_from="${4:-}"
     local rollback_to="${5:-}"
     
     set_metadata "deployment:argocd:${app_name}:status" "$status"
     
-    if [[ -n "$result" ]]; then
-        set_metadata "deployment:argocd:${app_name}:result" "$result"
+    if [[ -n "$result_value" ]]; then
+        set_metadata "deployment:argocd:${app_name}:result" "$result_value"
     fi
     
     if [[ -n "$rollback_from" ]]; then
