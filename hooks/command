@@ -704,6 +704,9 @@ steps:
     depends_on: "deployment-failed-choose-action"
     agents:
       queue: kubernetes
+    env:
+      ARGOCD_SERVER: "$server"
+      ARGOCD_USERNAME: "$username"
     command: |
       echo "--- Checking user decision from block step"
       
@@ -724,6 +727,13 @@ steps:
         echo "--- Executing rollback for $app_name"
         echo "Target revision: $rollback_target"
         echo "History ID: $history_id"
+        
+        # Authenticate with ArgoCD first (use environment variables in execute step)
+        echo "🔐 Authenticating with ArgoCD server: \$ARGOCD_SERVER"
+        if ! argocd login "\$ARGOCD_SERVER" --username "\$ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure; then
+          echo "❌ Failed to authenticate with ArgoCD"
+          exit 1
+        fi
         
         # Direct rollback with pre-computed values
         if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
