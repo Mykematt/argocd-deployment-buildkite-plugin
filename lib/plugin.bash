@@ -129,13 +129,12 @@ get_previous_stable_deployment() {
             fi
         fi
     done < <(argocd app history "$app_name" 2>/dev/null | tail -n +2)
-    
     if [[ -n "$previous_history_id" ]]; then
         echo "Found previous stable deployment: History ID $previous_history_id" >&2
         echo "$previous_history_id"
         return 0
     else
-        echo "No previous stable deployment found" >&2
+        echo "❌ No previous deployment found in ArgoCD history" >&2
         return 1
     fi
 }
