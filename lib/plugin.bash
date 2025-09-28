@@ -96,41 +96,15 @@ validate_config() {
 get_previous_stable_deployment() {
     local app_name="$1"
     
-    echo "Getting previous stable deployment from ArgoCD history..." >&2
+    echo "🔍 Getting previous deployment from ArgoCD history..." >&2
     
-    # Get current stable deployment first
-    local current_stable_id
-    current_stable_id=$(get_current_stable_deployment "$app_name")
+    # Simply get the second most recent deployment from history
+    # ArgoCD history is sorted with newest first, so line 2 is the previous deployment
+    local previous_history_id
+    previous_history_id=$(argocd app history "$app_name" 2>/dev/null | awk 'NR==3 {print $1}' || echo "")
     
-    if [[ "$current_stable_id" == "unknown" ]]; then
-        echo "No current stable deployment found" >&2
-        return 1
-    fi
-    
-    echo "Current stable deployment: History ID $current_stable_id" >&2
-    
-    # Get deployment history and find the entry before current stable
-    local previous_history_id=""
-    local found_current=false
-    
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[0-9]+ ]]; then
-            local line_id
-            line_id=$(echo "$line" | awk '{print $1}')
-            
-            if [[ "$found_current" == "true" ]]; then
-                # This is the entry after current (previous in chronological order)
-                previous_history_id="$line_id"
-                break
-            fi
-            
-            if [[ "$line_id" == "$current_stable_id" ]]; then
-                found_current=true
-            fi
-        fi
-    done < <(argocd app history "$app_name" 2>/dev/null | tail -n +2)
-    if [[ -n "$previous_history_id" ]]; then
-        echo "Found previous stable deployment: History ID $previous_history_id" >&2
+    if [[ -n "$previous_history_id" && "$previous_history_id" =~ ^[0-9]+$ ]]; then
+        echo "📍 Found previous deployment: History ID $previous_history_id" >&2
         echo "$previous_history_id"
         return 0
     else
