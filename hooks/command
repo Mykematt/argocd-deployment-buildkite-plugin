@@ -715,14 +715,15 @@ steps:
       buildkite-agent meta-data keys || echo "No metadata keys found"
       
       # Get the user's decision from metadata (this runs AFTER block step completes)
-      user_decision=$$(buildkite-agent meta-data get "rollback_decision" --default "")
-      echo "User selected: '$$user_decision'"
+      buildkite-agent meta-data get "rollback_decision" --default "" > /tmp/user_decision
+      user_decision=\$(cat /tmp/user_decision)
+      echo "User selected: '\$user_decision'"
       
       # Debug: Try to get the metadata with different approaches
       echo "🔍 Debug metadata lookup:"
       buildkite-agent meta-data get "rollback_decision" || echo "Key not found"
       
-      if [ "$$user_decision" = "rollback" ]; then
+      if [ "\$user_decision" = "rollback" ]; then
         echo "--- Executing rollback for $app_name"
         echo "Target revision: $rollback_target"
         echo "History ID: $history_id"
@@ -755,7 +756,7 @@ steps:
           exit 1
         fi
         
-      elif [ "$$user_decision" = "accept" ]; then
+      elif [ "\$user_decision" = "accept" ]; then
         echo "--- User chose to accept deployment failure"
         
         # Create annotation for accepted failure
@@ -771,7 +772,7 @@ steps:
         
       else
         echo "❌ Error: No valid decision found in metadata"
-        echo "Expected 'rollback' or 'accept', got: '$$user_decision'"
+        echo "Expected 'rollback' or 'accept', got: '\$user_decision'"
         echo "Please complete the block step first"
         exit 1
       fi
