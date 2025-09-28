@@ -10,7 +10,6 @@ The plugin requires the following tools to be pre-installed on your Buildkite ag
 
 - **ArgoCD CLI** (`argocd`) - [Installation Guide](https://argo-cd.readthedocs.io/en/stable/cli_installation/)
 - **jq** - JSON processor
-- **curl** - HTTP client
 
 > **Note**: The plugin does not automatically install these tools to support air-gapped/isolated network environments. Please ensure they are available on your Buildkite agents before using this plugin.
 
@@ -98,12 +97,6 @@ Rollback mode when `mode` is `"rollback"`. Defaults to `"auto"`.
 
 Timeout in seconds for ArgoCD operations. Defaults to `300`. Must be between 30 and 3600 seconds.
 
-#### `health_check` (boolean)
-
-Enable health monitoring via ArgoCD API. Defaults to `true`.
-
-**Note**: When enabled, failed health checks trigger automatic rollback in deploy mode. For manual rollback control (useful in development), set `health_check: false` and use explicit rollback mode when needed.
-
 #### `health_check_interval` (number)
 
 Health check interval in seconds. Defaults to `30`. Must be between 10 and 300 seconds.
@@ -155,22 +148,12 @@ steps:
   - plugins:
       - argocd_deployment#v1.0.0:
           app: "my-app"
-          # health_check: true (default)
-          # Automatic rollback on health failures
+          # rollback_mode: auto (default)
 ```
 
 ### Development: Manual Control
 
 Disable auto-rollback for investigation, use explicit rollback when needed:
-
-```yaml
-# Deploy without auto-rollback
-steps:
-  - plugins:
-      - argocd_deployment#v1.0.0:
-          app: "my-app"
-          health_check: false  # Disable auto-rollback
-```
 
 ```yaml
 # Later: Manual rollback pipeline
@@ -200,8 +183,6 @@ steps:
             slack_channel: "#deployments"  # Channel name
             # slack_channel: "@devops-lead"  # Username
             # slack_channel: "U123ABC456"    # User ID
-            webhook_url: "https://your-webhook.com/notify"
-            pagerduty_integration_key: "YOUR_PAGERDUTY_KEY"
 ```
 
 ## Compatibility
