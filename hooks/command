@@ -676,18 +676,18 @@ steps:
   - block: "Deployment Failed - Choose Action"
     key: "deployment-failed-choose-action"
     prompt: |
-      # Deployment failed for application: $app_name
+      🚨 DEPLOYMENT FAILED: $app_name
       
       Please choose your next action:
       
-      ## Option 1: Rollback (Recommended)
-      - Rollback to previous stable deployment
-      - Target: $rollback_target
-      - Safer option for production environments
+      🔄 OPTION 1: ROLLBACK (RECOMMENDED)
+      • Rollback to previous stable deployment
+      • Target: $rollback_target  
+      • Safer option for production environments
       
-      ## Option 2: Accept Failure
-      - Keep current failed state for debugging
-      - Manual investigation required
+      ❌ OPTION 2: ACCEPT FAILURE
+      • Keep current failed state for debugging
+      • Manual investigation required
     fields:
       - select: "Action"
         key: "rollback_decision"
@@ -695,9 +695,9 @@ steps:
         required: true
         default: "rollback"
         options:
-          - label: "Rollback to Previous Stable Version"
+          - label: "🔄 Rollback to Previous Stable Version"
             value: "rollback"
-          - label: "Accept Failure (No Rollback)"
+          - label: "❌ Accept Failure (No Rollback)"
             value: "accept"
 
   - label: "Execute User Decision"
@@ -718,7 +718,11 @@ steps:
       
       # Debug: Try to get the metadata with different approaches
       echo "🔍 Debug metadata lookup:"
-      buildkite-agent meta-data get "rollback_decision" || echo "rollback_decision key not found"
+      echo "Raw metadata value: '\$(buildkite-agent meta-data get "rollback_decision" 2>/dev/null || echo "NOT_FOUND")'"
+      
+      # Try alternative approaches
+      echo "🔍 Alternative lookups:"
+      buildkite-agent meta-data get "rollback_decision" --default "DEFAULT_VALUE" || echo "Failed with default"
       
       if [ "\$user_decision" = "rollback" ]; then
         echo "--- Executing rollback for $app_name"
