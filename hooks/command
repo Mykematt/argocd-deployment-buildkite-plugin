@@ -773,12 +773,15 @@ steps:
 EOF
     
     echo "📤 Uploading rollback decision pipeline..."
-    if buildkite-agent pipeline upload "$pipeline_file" >/dev/null 2>&1; then
+    local upload_output
+    if upload_output=$(buildkite-agent pipeline upload "$pipeline_file" 2>&1); then
         echo "✅ Successfully injected rollback decision steps"
         rm -f "$pipeline_file"
         return 0
     else
         echo "❌ Failed to inject rollback decision steps - pipeline upload failed"
+        echo "📋 Upload error output:"
+        echo "$upload_output"
         echo ""
         echo "🐛 DEBUG: Generated YAML with line numbers for troubleshooting:"
         echo "----------------------------------------"
