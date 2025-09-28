@@ -674,6 +674,7 @@ inject_rollback_decision_block() {
     cat > "$pipeline_file" << EOF
 steps:
   - block: "Deployment Failed - Choose Action"
+    key: "deployment-failed-choose-action"
     prompt: |
       **Deployment failed for application: $app_name**
       
@@ -700,6 +701,9 @@ steps:
             value: "accept"
 
   - label: "Execute User Decision"
+    depends_on: 
+      - step: "deployment-failed-choose-action"
+        allow_failure: false
     command: |
       echo "--- Checking user decision from block step"
       
