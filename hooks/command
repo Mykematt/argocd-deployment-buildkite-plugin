@@ -673,33 +673,7 @@ inject_rollback_decision_block() {
     # Generate the pipeline YAML with pre-baked values
     cat > "$pipeline_file" << EOF
 steps:
-  - block: "Deployment Failed - Choose Action"
-    prompt: |
-      **Deployment failed for application: $app_name**
-      
-      Please choose your next action:
-      
-      **Option 1: Rollback (Recommended)**
-      - Rollback to previous stable deployment
-      - Target: $rollback_target
-      - Safer option for production environments
-      
-      **Option 2: Accept Failure**
-      - Keep current failed state for debugging
-      - Manual investigation required
-    fields:
-      - select: "Action"
-        key: "rollback_decision"
-        hint: "What would you like to do?"
-        required: true
-        default: "rollback"
-        options:
-          - label: "Rollback to Previous Stable Version"
-            value: "rollback"
-          - label: "Accept Failure (No Rollback)"
-            value: "accept"
-
-  - label: "Execute Rollback"
+  - label: "🔄 Rollback to Previous Stable Version"
     command: |
       echo "--- Executing rollback for $app_name"
       echo "Target revision: $rollback_target"
@@ -732,9 +706,8 @@ steps:
         
         exit 1
       fi
-    if: build.meta_data.get("rollback_decision") == "rollback"
 
-  - label: "Accept Deployment Failure"
+  - label: "❌ Accept Deployment Failure"
     command: |
       echo "--- User chose to accept deployment failure"
       
@@ -748,7 +721,6 @@ steps:
       buildkite-agent meta-data set "deployment:argocd:$app_name:status" "failed_accepted"
       
       echo "Failure accepted - no rollback performed"
-    if: build.meta_data.get("rollback_decision") == "accept"
 EOF
     
     echo "📤 Uploading rollback decision pipeline..."
