@@ -702,6 +702,8 @@ steps:
 
   - label: "Execute User Decision"
     depends_on: "deployment-failed-choose-action"
+    agents:
+      queue: kubernetes
     command: |
       echo "--- Checking user decision from block step"
       
@@ -718,11 +720,7 @@ steps:
       
       # Debug: Try to get the metadata with different approaches
       echo "🔍 Debug metadata lookup:"
-      echo "Raw metadata value: '\$(buildkite-agent meta-data get "rollback_decision" 2>/dev/null || echo "NOT_FOUND")'"
-      
-      # Try alternative approaches
-      echo "🔍 Alternative lookups:"
-      buildkite-agent meta-data get "rollback_decision" --default "DEFAULT_VALUE" || echo "Failed with default"
+      buildkite-agent meta-data get "rollback_decision" || echo "Key not found"
       
       if [ "$$user_decision" = "rollback" ]; then
         echo "--- Executing rollback for $app_name"
