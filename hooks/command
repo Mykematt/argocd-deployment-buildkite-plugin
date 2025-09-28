@@ -701,9 +701,7 @@ steps:
             value: "accept"
 
   - label: "Execute User Decision"
-    depends_on: 
-      - step: "deployment-failed-choose-action"
-        allow_failure: false
+    depends_on: "deployment-failed-choose-action"
     command: |
       echo "--- Checking user decision from block step"
       
