@@ -712,9 +712,9 @@ steps:
         # Create success annotation
         buildkite-agent annotate "**Manual Rollback Successful**
 
-**Application:** \`$app_name\`  
-**Rolled back to:** \`$rollback_target\`  
-**History ID:** \`$history_id\`  
+**Application:** \\\`$app_name\\\`  
+**Rolled back to:** \\\`$rollback_target\\\`  
+**History ID:** \\\`$history_id\\\`  
 **Timestamp:** $timestamp
 
 *The application has been restored to the previous stable version.*" \\
@@ -731,9 +731,9 @@ steps:
         # Create failure annotation
         buildkite-agent annotate "**Manual Rollback Failed**
 
-**Application:** \`$app_name\`  
-**Target:** \`$rollback_target\`  
-**History ID:** \`$history_id\`  
+**Application:** \\\`$app_name\\\`  
+**Target:** \\\`$rollback_target\\\`  
+**History ID:** \\\`$history_id\\\`  
 **Timestamp:** $timestamp
 
 *Manual investigation may be required.*" \\
@@ -755,7 +755,7 @@ steps:
       # Create annotation for accepted failure
       buildkite-agent annotate "**Deployment Failure Accepted**
 
-**Application:** \`$app_name\`  
+**Application:** \\\`$app_name\\\`  
 **Action:** User chose to accept failure and skip rollback  
 **Status:** Failed deployment left in place for debugging  
 **Timestamp:** $timestamp
