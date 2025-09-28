@@ -504,8 +504,8 @@ send_rollback_notification() {
         local notification_pipeline
         notification_pipeline=$(cat <<-EOF
 steps:
-  - label: ":slack: Rollback Notification"
-    command: "echo 'Rollback notification sent'"
+  - label: ":slack: ArgoCD Rollback Alert"
+    command: "echo 'Sending rollback notification to Slack...'"
     notify:
       - slack:
           channels:
@@ -720,7 +720,7 @@ steps:
         fi
         
         # Direct rollback with pre-computed values
-        if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
+        if argocd app rollback "$app_name" "$history_id" --timeout "$timeout" >/dev/null 2>&1; then
           echo "Rollback completed successfully"
           
           # Create success annotation
