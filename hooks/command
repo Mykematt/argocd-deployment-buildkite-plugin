@@ -708,15 +708,7 @@ steps:
       
       # Small delay to ensure metadata is saved
       sleep 2
-      
-      # Debug: List all metadata keys
-      echo "🔍 All metadata keys:"
-      buildkite-agent meta-data keys || echo "No metadata keys found"
-      
-      # Debug: Direct metadata lookup
-      echo "🔍 Debug metadata lookup:"
-      buildkite-agent meta-data get "rollback_decision" || echo "Key not found"
-      
+       
       # Use metadata directly in conditional without variable assignment
       if buildkite-agent meta-data get "rollback_decision" --default "" | grep -q "^rollback\$"; then
         echo "User selected: rollback"
@@ -725,8 +717,8 @@ steps:
         echo "History ID: $history_id"
         
         # Authenticate with ArgoCD first (use Buildkite plugin environment variables)
-        echo "🔐 Authenticating with ArgoCD server: \$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER"
-        if ! argocd login "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER" --username "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure; then
+        echo "🔐 Authenticating with ArgoCD server..."
+        if ! argocd login "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER" --username "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure >/dev/null 2>&1; then
           echo "❌ Failed to authenticate with ArgoCD"
           exit 1
         fi
@@ -736,9 +728,7 @@ steps:
           echo "Rollback completed successfully"
           
           # Create success annotation
-          printf "**Manual Rollback Successful**\n\nApplication: %s\nRolled back to: %s\nHistory ID: %s\nTimestamp: %s\n\nThe application has been restored to the previous stable version." \\
-            "$app_name" "$rollback_target" "$history_id" "$timestamp" | \\
-            buildkite-agent annotate --style "success" --context "manual-rollback-$app_name" || true
+          printf "**Manual Rollback Successful**\n\nApplication: %s\nRolled back to: %s\nHistory ID: %s\nTimestamp: %s\n\nThe application has been restored to the previous stable version." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "success" --context "manual-rollback-$app_name" || true
             
           # Update metadata
           buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_success"
@@ -748,9 +738,7 @@ steps:
           echo "Rollback failed"
           
           # Create failure annotation
-          printf "**Manual Rollback Failed**\n\nApplication: %s\nTarget: %s\nHistory ID: %s\nTimestamp: %s\n\nManual investigation may be required." \\
-            "$app_name" "$rollback_target" "$history_id" "$timestamp" | \\
-            buildkite-agent annotate --style "error" --context "manual-rollback-failed-$app_name" || true
+          printf "**Manual Rollback Failed**\n\nApplication: %s\nTarget: %s\nHistory ID: %s\nTimestamp: %s\n\nManual investigation may be required." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "error" --context "manual-rollback-failed-$app_name" || true
             
           # Update metadata
           buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_failed"
@@ -764,9 +752,7 @@ steps:
         echo "--- User chose to accept deployment failure"
         
         # Create annotation for accepted failure
-        printf "**Deployment Failure Accepted**\n\nApplication: %s\nAction: User chose to accept failure and skip rollback\nStatus: Failed deployment left in place for debugging\nTimestamp: %s\n\nManual investigation and cleanup may be required." \\
-          "$app_name" "$timestamp" | \\
-          buildkite-agent annotate --style "warning" --context "accept-failure-$app_name" || true
+        printf "**Deployment Failure Accepted**\n\nApplication: %s\nAction: User chose to accept failure and skip rollback\nStatus: Failed deployment left in place for debugging\nTimestamp: %s\n\nManual investigation and cleanup may be required." "$app_name" "$timestamp" | buildkite-agent annotate --style "warning" --context "accept-failure-$app_name" || true
         
         # Update metadata
         buildkite-agent meta-data set "deployment:argocd:$app_name:result" "failure_accepted"
@@ -792,28 +778,7 @@ EOF
         return 0
     else
         echo "❌ Failed to inject rollback decision steps - pipeline upload failed"
-        echo "📋 Upload error output:"
-        echo "$upload_output"
-        echo ""
-        echo "🐛 DEBUG: Generated YAML with line numbers for troubleshooting:"
-        echo "----------------------------------------"
-        cat -n "$pipeline_file" >&2
-        echo "----------------------------------------"
-        echo ""
-        echo "💡 Check for:"
-        echo "   - YAML indentation issues"
-        echo "   - Special characters in variables"
-        echo "   - Missing quotes around values"
-        echo "   - Invalid YAML syntax"
-        echo ""
-        echo "🔍 Variables used:"
-        echo "   app_name: '$app_name'"
-        echo "   rollback_target: '$rollback_target'"
-        echo "   history_id: '$history_id'"
-        echo "   server: '$server'"
-        echo "   username: '$username'"
-        echo "   timeout: '$timeout'"
-        echo "   timestamp: '$timestamp'"
+        echo "Upload error: $upload_output"
         rm -f "$pipeline_file"
         return 1
     fi
