@@ -680,14 +680,13 @@ steps:
       
       Please choose your next action:
       
-      🔄 OPTION 1: ROLLBACK (RECOMMENDED)
-      • Rollback to previous stable deployment
-      • Target: $rollback_target  
-      • Safer option for production environments
+      🔄 ROLLBACK (RECOMMENDED)
+      Rollback to previous stable deployment (Target: $rollback_target)
+      Safer option for production environments
       
-      ❌ OPTION 2: ACCEPT FAILURE
-      • Keep current failed state for debugging
-      • Manual investigation required
+      ❌ ACCEPT FAILURE  
+      Keep current failed state for debugging
+      Manual investigation required
     fields:
       - select: "Action"
         key: "rollback_decision"
@@ -704,9 +703,6 @@ steps:
     depends_on: "deployment-failed-choose-action"
     agents:
       queue: kubernetes
-    env:
-      ARGOCD_SERVER: "$server"
-      ARGOCD_USERNAME: "$username"
     command: |
       echo "--- Checking user decision from block step"
       
@@ -728,9 +724,9 @@ steps:
         echo "Target revision: $rollback_target"
         echo "History ID: $history_id"
         
-        # Authenticate with ArgoCD first (use environment variables in execute step)
-        echo "🔐 Authenticating with ArgoCD server: \$ARGOCD_SERVER"
-        if ! argocd login "\$ARGOCD_SERVER" --username "\$ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure; then
+        # Authenticate with ArgoCD first (use Buildkite plugin environment variables)
+        echo "🔐 Authenticating with ArgoCD server: \$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER"
+        if ! argocd login "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER" --username "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure; then
           echo "❌ Failed to authenticate with ArgoCD"
           exit 1
         fi
