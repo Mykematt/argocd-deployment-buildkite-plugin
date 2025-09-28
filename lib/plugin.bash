@@ -44,72 +44,25 @@ setup_argocd_auth() {
     echo "✅ Successfully authenticated with ArgoCD"
 }
 
-# Installation functions
-install_argocd_cli() {
-    echo "📦 Installing ArgoCD CLI..."
-    
-    # Check if ArgoCD CLI is already installed
-    if command -v argocd >/dev/null 2>&1; then
-        echo "✅ ArgoCD CLI is already installed: $(argocd version --client --short)"
-        return 0
-    fi
-    
-    # Determine OS and architecture
-    local os
-    local arch
-    
-    case "$(uname -s)" in
-        Linux*)  os="linux";;
-        Darwin*) os="darwin";;
-        *)       echo "❌ Unsupported OS: $(uname -s)"; return 1;;
-    esac
-    
-    case "$(uname -m)" in
-        x86_64) arch="amd64";;
-        arm64)  arch="arm64";;
-        *)      echo "❌ Unsupported architecture: $(uname -m)"; return 1;;
-    esac
-    
-    # Get latest version and download
-    local version
-    version=$(plugin_read_config ARGOCD_VERSION "stable")
-    
-    if [[ "$version" == "stable" ]]; then
-        version=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases/latest | jq -r .tag_name)
-    fi
-    
-    echo "📥 Downloading ArgoCD CLI version: $version"
-    
-    local download_url="https://github.com/argoproj/argo-cd/releases/download/$version/argocd-$os-$arch"
-    local install_path="/usr/local/bin/argocd"
-    
-    if ! curl -sSL "$download_url" -o "$install_path"; then
-        echo "❌ Failed to download ArgoCD CLI"
-        return 1
-    fi
-    
-    chmod +x "$install_path"
-    echo "✅ ArgoCD CLI installed successfully: $(argocd version --client --short)"
-}
-
 validate_requirements() {
     echo "🔍 Validating requirements..."
     
     # Check for required commands
-    local required_commands=("jq" "curl")
+    local required_commands=("argocd" "jq" "curl")
     
     for cmd in "${required_commands[@]}"; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             echo "❌ Required command not found: $cmd"
+            if [[ "$cmd" == "argocd" ]]; then
+                echo "   Please install ArgoCD CLI on the Buildkite agent"
+                echo "   Installation guide: https://argo-cd.readthedocs.io/en/stable/cli_installation/"
+            fi
             return 1
         fi
     done
     
-    # Install ArgoCD CLI if not present
-    if ! command -v argocd >/dev/null 2>&1; then
-        install_argocd_cli
-    fi
-    
+    # Show ArgoCD CLI version for debugging
+    echo "✅ ArgoCD CLI found: $(argocd version --client --short 2>/dev/null || echo 'version unknown')"
     echo "✅ All requirements validated"
 }
 
@@ -197,6 +150,33 @@ get_previous_deployment_revision() {
     fi
 }
 
+# Helper function to get the current stable deployment that's actually running
+get_current_stable_deployment() {
+    local app_name="$1"
+    
+    echo "🔍 Getting current stable deployment for $app_name..." >&2
+    
+    # Get the revision that's actually running in the cluster (from last successful operation)
+    local current_revision_sha
+    current_revision_sha=$(argocd app get "$app_name" -o json | jq -r '.status.operationState.syncResult.revision // empty' || echo "unknown")
+    
+    # Fallback to sync revision if operation state is not available
+    if [[ -z "$current_revision_sha" || "$current_revision_sha" == "unknown" ]]; then
+        current_revision_sha=$(argocd app get "$app_name" -o json | jq -r '.status.sync.revision // "unknown"')
+    fi
+    
+    # Convert SHA to history ID
+    if [[ "$current_revision_sha" != "unknown" ]]; then
+        local short_sha="${current_revision_sha:0:7}"
+        local history_id
+        history_id=$(argocd app history "$app_name" | grep "$short_sha" | tail -1 | awk '{print $1}' || echo "unknown")
+        echo "📍 Found stable deployment: SHA $short_sha → History ID $history_id" >&2
+        echo "$history_id"
+    else
+        echo "unknown"
+    fi
+}
+
 set_metadata() {
     local key="$1"
     local value="$2"
@@ -208,24 +188,54 @@ get_metadata() {
     buildkite-agent meta-data get "$key" 2>/dev/null || echo ""
 }
 
-# Helper function to lookup deployment history ID from git revision
+# Smart helper function to lookup deployment history ID from git revision or validate history ID
 lookup_deployment_history_id() {
     local app_name="$1"
-    local git_revision="$2"
+    local target_revision="$2"
     
-    echo "🔍 Looking up deployment history ID for revision: $git_revision" >&2
+    echo "🔍 Processing target revision: $target_revision" >&2
     
-    local short_hash="${git_revision:0:7}"
-    local history_id
-    history_id=$(argocd app history "$app_name" | grep "$short_hash" | tail -1 | awk '{print $1}' || echo "")
-    
-    if [[ -z "$history_id" ]]; then
-        echo "❌ Could not find deployment history ID for revision: $git_revision (short: $short_hash)" >&2
-        return 1
+    # Check if input looks like a History ID (numeric, typically 1-3 digits)
+    if [[ "$target_revision" =~ ^[0-9]+$ ]] && [[ ${#target_revision} -le 4 ]]; then
+        echo "📋 Input appears to be a History ID: $target_revision" >&2
+        
+        # Validate that this History ID exists in the deployment history
+        local history_output
+        if ! history_output=$(argocd app history "$app_name" 2>/dev/null); then
+            echo "❌ Failed to get deployment history for app: $app_name" >&2
+            return 1
+        fi
+        
+        # Check if the History ID exists (look for exact match in first column)
+        if echo "$history_output" | awk -v id="$target_revision" 'NR > 1 && $1 == id {found=1} END {exit !found}'; then
+            echo "✅ History ID $target_revision found in deployment history" >&2
+            echo "$target_revision"
+            return 0
+        else
+            echo "❌ History ID $target_revision not found in deployment history" >&2
+            echo "Available History IDs:" >&2
+            echo "$history_output" | awk 'NR > 1 {print "  - " $1}' >&2
+            return 1
+        fi
+    else
+        echo "🔍 Input appears to be a commit SHA: $target_revision" >&2
+        
+        # Original logic for commit SHA lookup
+        local short_hash="${target_revision:0:7}"
+        local history_id
+        history_id=$(argocd app history "$app_name" | grep "$short_hash" | tail -1 | awk '{print $1}' || echo "")
+        
+        if [[ -z "$history_id" ]]; then
+            echo "❌ Could not find deployment history ID for commit SHA: $target_revision (short: $short_hash)" >&2
+            echo "Available deployments:" >&2
+            argocd app history "$app_name" | head -10 >&2 || true
+            return 1
+        fi
+        
+        echo "📍 Found deployment history ID: $history_id for commit SHA: $target_revision" >&2
+        echo "$history_id"
+        return 0
     fi
-    
-    echo "📍 Found deployment history ID: $history_id for revision: $git_revision" >&2
-    echo "$history_id"
 }
 
 # Log collection and artifact functions

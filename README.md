@@ -2,6 +2,18 @@
 
 A Buildkite plugin for deploying and rolling back ArgoCD applications with comprehensive health monitoring, log collection, and notification capabilities.
 
+## Prerequisites
+
+### Required CLI Tools
+
+The plugin requires the following tools to be pre-installed on your Buildkite agents:
+
+- **ArgoCD CLI** (`argocd`) - [Installation Guide](https://argo-cd.readthedocs.io/en/stable/cli_installation/)
+- **jq** - JSON processor
+- **curl** - HTTP client
+
+> **Note**: The plugin does not automatically install these tools to support air-gapped/isolated network environments. Please ensure they are available on your Buildkite agents before using this plugin.
+
 ## Authentication
 
 The plugin requires ArgoCD authentication via environment variables. You must set these before your ArgoCD plugin steps:
@@ -54,7 +66,7 @@ steps:
 - 🏥 **Health Monitoring**: Real-time application health checks via ArgoCD API
 - 📋 **Log Collection**: Automatic collection of ArgoCD application and pod logs
 - 📤 **Artifact Upload**: Upload deployment logs and artifacts to Buildkite
-- 🔔 **Notifications**: Multi-channel notifications (Slack, Webhook, PagerDuty)
+- 🔔 **Notifications**: Slack notifications via Buildkite integration
 - 🚧 **Manual Rollback Blocks**: Optional manual intervention points
 - ⚡ **Auto Rollback**: Automatic rollback on deployment failures
 
@@ -131,14 +143,6 @@ Slack channel, username, or user ID for notifications using Buildkite's native S
 - Channel names: `#deployments`, `#alerts`
 - Usernames: `@username`, `@devops-team`
 - User IDs: `U123ABC456` (found via User > More options > Copy member ID)
-
-##### `notifications.webhook_url` (string, optional)
-
-Custom webhook URL for notifications.
-
-##### `notifications.pagerduty_integration_key` (string, optional)
-
-PagerDuty integration key for alerts.
 
 ## Usage Patterns
 

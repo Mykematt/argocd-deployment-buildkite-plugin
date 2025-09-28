@@ -5,7 +5,6 @@ main: hooks.command
 version: v1.0.0
 api: v1
 requirements:
-  - argocd
   - bash
 configuration:
   properties:
@@ -81,12 +80,6 @@ configuration:
         slack_channel:
           type: string
           description: "Slack channel, username, or user ID for notifications (e.g., '#deployments', '@username', or 'U123ABC456')"
-        webhook_url:
-          type: string
-          description: "Custom webhook URL for notifications"
-        pagerduty_integration_key:
-          type: string
-          description: "PagerDuty integration key"
       additionalProperties: false
   required:
     - app
