@@ -148,7 +148,9 @@ steps:
   - plugins:
       - argocd_deployment#v1.0.0:
           app: "my-app"
+          mode: "deploy"
           # rollback_mode: auto (default)
+          rollback_mode: "manual"
 ```
 
 ### Development: Manual Control
@@ -162,7 +164,7 @@ steps:
       - argocd_deployment#v1.0.0:
           app: "my-app"
           mode: "rollback"
-          rollback_mode: "manual"  # Human oversight
+          rollback_mode: "manual"  # Required for manual rollback
 ```
 
 ### Advanced Configuration
