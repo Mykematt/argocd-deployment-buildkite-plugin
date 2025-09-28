@@ -726,7 +726,7 @@ steps:
         echo "History ID: $history_id"
         
         # Direct rollback with pre-computed values
-        if argocd app rollback "$app_name" "$history_id" --server "$server" --username "$username" --password "\${ARGOCD_PASSWORD}" --timeout "$timeout" --insecure; then
+        if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
           echo "Rollback completed successfully"
           
           # Create success annotation
