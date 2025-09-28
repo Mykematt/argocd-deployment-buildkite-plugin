@@ -93,59 +93,49 @@ validate_config() {
     echo "   Rollback Mode: $rollback_mode"
 }
 
-# Utility functions
-get_current_revision() {
-    local app_name="$1"
-    argocd app get "$app_name" --output json 2>/dev/null | jq -r '.status.sync.revision // "unknown"'
-}
-
-get_previous_deployment_revision() {
+get_previous_stable_deployment() {
     local app_name="$1"
     
-    echo "🔍 Getting previous deployment revision from ArgoCD history..."
+    echo "Getting previous stable deployment from ArgoCD history..." >&2
     
-    # Get the current deployment first
-    local current_revision_sha
-    current_revision_sha=$(argocd app get "$app_name" -o json | jq -r '.status.sync.revision // "unknown"')
+    # Get current stable deployment first
+    local current_stable_id
+    current_stable_id=$(get_current_stable_deployment "$app_name")
     
-    if [[ "$current_revision_sha" == "unknown" ]]; then
-        echo "No previous version available for rollback"
+    if [[ "$current_stable_id" == "unknown" ]]; then
+        echo "No current stable deployment found" >&2
         return 1
     fi
     
-    # Get deployment history and find the revision before current
-    local previous_history_id=""
-    local current_short_sha="${current_revision_sha:0:7}"
+    echo "Current stable deployment: History ID $current_stable_id" >&2
     
-    # Look for the deployment history entry that comes before the current one
+    # Get deployment history and find the entry before current stable
+    local previous_history_id=""
+    local found_current=false
+    
     while IFS= read -r line; do
-        # Skip empty lines and headers
-        if [[ -n "$line" && "$line" != "ID"* && "$line" != *"----"* ]]; then
-            local line_id=""
-            local line_hash=""
+        if [[ "$line" =~ ^[0-9]+ ]]; then
+            local line_id
+            line_id=$(echo "$line" | awk '{print $1}')
             
-            line_id=$(echo "$line" | awk '{print $1}' 2>/dev/null || echo "")
-            line_hash=$(echo "$line" | awk '{if (NF >= 7) print $7}' 2>/dev/null | tr -d '()' || echo "")
-            
-            if [[ -n "$line_id" && -n "$line_hash" && "$line_hash" != "unknown" ]]; then
-                local line_short_hash="${line_hash:0:7}"
-                
-                # If we find the current revision, the previous one we stored is what we want
-                if [[ "$line_short_hash" == "$current_short_sha" ]]; then
-                    break
-                fi
-                
-                # Store this as potential previous revision
+            if [[ "$found_current" == "true" ]]; then
+                # This is the entry after current (previous in chronological order)
                 previous_history_id="$line_id"
+                break
+            fi
+            
+            if [[ "$line_id" == "$current_stable_id" ]]; then
+                found_current=true
             fi
         fi
-    done < <(argocd app history "$app_name" 2>/dev/null)
+    done < <(argocd app history "$app_name" 2>/dev/null | tail -n +2)
     
     if [[ -n "$previous_history_id" ]]; then
-        echo "📍 Found previous deployment history ID: $previous_history_id"
+        echo "Found previous stable deployment: History ID $previous_history_id" >&2
         echo "$previous_history_id"
+        return 0
     else
-        echo "No previous version available for rollback"
+        echo "No previous stable deployment found" >&2
         return 1
     fi
 }
