@@ -53,7 +53,7 @@ steps:
   - label: "🚀 Deploy Application"
     depends_on: "fetch-argocd-secrets"
     plugins:
-      - github.com/your-org/argocd-deployment-buildkite-plugin:
+      - argocd_deployment#v1.0.0:
           app: "my-app"
           argocd_server: "https://argocd.example.com" # if not set in environment variables
           argocd_username: "admin" # if not set in environment variables
@@ -164,7 +164,7 @@ steps:
       - secrets#v1.0.0:
           variables:
             ARGOCD_PASSWORD: argocd_password
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#main:
+      - argocd_deployment#v1.0.0:
           app: "my-app"
           argocd_server: "https://argocd.example.com"
           argocd_username: "admin"
@@ -186,7 +186,7 @@ steps:
       - secrets#v1.0.0:
           variables:
             ARGOCD_PASSWORD: argocd_password
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#main:
+      - argocd_deployment#v1.0.0:
           app: "my-app"
           argocd_server: "https://argocd.example.com"
           argocd_username: "admin"
@@ -210,7 +210,7 @@ steps:
       - secrets#v1.0.0:
           variables:
             ARGOCD_PASSWORD: argocd_password
-      - github.com/Mykematt/argocd-deployment-buildkite-plugin#main:
+      - argocd_deployment#v1.0.0:
           app: "my-app"
           argocd_server: "https://argocd.example.com"
           argocd_username: "admin"

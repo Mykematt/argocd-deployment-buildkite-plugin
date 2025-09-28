@@ -27,6 +27,9 @@ configuration:
       description: "Rollback mode: auto or manual"
       default: "auto"
       enum: ["auto", "manual"]
+    target_revision:
+      type: string
+      description: "Target revision for rollback operations (ArgoCD History ID or Git commit SHA)"
     timeout:
       type: number
       description: "Timeout in seconds for ArgoCD operations"
