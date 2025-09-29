@@ -239,7 +239,7 @@ collect_app_logs() {
         echo ""
         
         echo "=== ArgoCD Deployment History ==="
-        argocd app history "$app_name" 2>/dev/null | head -20 || echo "Failed to get history"
+        argocd app history "$app_name" 2>/dev/null | head -21 || echo "Failed to get history"
     } > "$log_dir/argocd-$app_name.log" 2>&1
     
     # Get detailed application resources with status
