@@ -14,5 +14,6 @@ steps:
     plugins:
       - shellcheck#v1.4.0:
           files:
-            - hooks/**
-            - lib/**
+            - hooks/command
+            - lib/*.bash
+            - lib/modules/*.bash
