@@ -4,21 +4,21 @@ set -euo pipefail
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # Source shared utilities and plugin configuration
-# shellcheck source=../lib/shared.bash
+# shellcheck source=lib/shared.bash
 . "$DIR/../lib/shared.bash"
-# shellcheck source=../lib/plugin.bash
+# shellcheck source=lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
 
 # Source feature modules
-# shellcheck source=../lib/modules/argocd.bash
+# shellcheck source=lib/modules/argocd.bash
 . "$DIR/../lib/modules/argocd.bash"
-# shellcheck source=../lib/modules/health.bash
+# shellcheck source=lib/modules/health.bash
 . "$DIR/../lib/modules/health.bash"
-# shellcheck source=../lib/modules/logging.bash
+# shellcheck source=lib/modules/logging.bash
 . "$DIR/../lib/modules/logging.bash"
-# shellcheck source=../lib/modules/rollback.bash
+# shellcheck source=lib/modules/rollback.bash
 . "$DIR/../lib/modules/rollback.bash"
-# shellcheck source=../lib/modules/notifications.bash
+# shellcheck source=lib/modules/notifications.bash
 . "$DIR/../lib/modules/notifications.bash"
 
 # Set up error handling and debug mode
