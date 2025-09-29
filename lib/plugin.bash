@@ -101,7 +101,7 @@ get_previous_stable_deployment() {
     # Simply get the second most recent deployment from history
     # ArgoCD history is sorted with newest first, so line 2 is the previous deployment
     local previous_history_id
-    previous_history_id=$(argocd app history "$app_name" 2>/dev/null | awk 'NR==3 {print $1}' || echo "")
+    previous_history_id=$(argocd app history "$app_name" 2>/dev/null | awk 'NR==2 {print $1}' || echo "")
     
     if [[ -n "$previous_history_id" && "$previous_history_id" =~ ^[0-9]+$ ]]; then
         echo "📍 Found previous deployment: History ID $previous_history_id" >&2
