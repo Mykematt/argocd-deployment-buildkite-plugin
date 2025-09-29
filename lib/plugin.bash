@@ -201,7 +201,7 @@ lookup_deployment_history_id() {
         if [[ -z "$history_id" ]]; then
             echo "❌ Could not find deployment history ID for commit SHA: $target_revision (short: $short_hash)" >&2
             echo "Available deployments:" >&2
-            argocd app history "$app_name" | head -20 >&2 || true
+            argocd app history "$app_name" | head -21 >&2 || true
             return 1
         fi
         
