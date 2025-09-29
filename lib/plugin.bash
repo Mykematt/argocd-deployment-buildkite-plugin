@@ -251,17 +251,6 @@ collect_app_logs() {
     argocd app logs "$app_name" --tail "$log_lines" > "$log_dir/application-logs.log" 2>&1 || \
         echo "   ⚠️  Failed to get application logs" >&2
     
-    # Get application events (using app status conditions instead of non-existent events command)
-    echo "📋 Application-level events:" >&2
-    argocd app get "$app_name" --output json 2>/dev/null | \
-        jq -r '.status.conditions[]? | "[\(.lastTransitionTime)] \(.type): \(.message)"' 2>&1 | \
-        tee "$log_dir/application-events.log" | while read -r event; do
-        echo "   $event" >&2
-    done || echo "   No application events found" >&2
-    
-    echo "" >&2
-    echo "✅ Log and diagnostic information collected" >&2
-    
     echo "✅ Log collection complete" >&2
 }
 

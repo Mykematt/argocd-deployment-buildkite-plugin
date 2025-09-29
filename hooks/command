@@ -740,9 +740,7 @@ steps:
         else
           echo "❌ Rollback failed with exit code: $rollback_exit_code"
           # Filter out help text and only show actual errors
-          echo "$rollback_output" | grep -v "Available Commands:" | grep -v "Flags:" | grep -v "Usage:" | head -5 | while IFS= read -r line; do
-            [[ -n "$line" ]] && echo "Error details: $line"
-          done
+          echo "$rollback_output" | grep -v "Available Commands:" | grep -v "Flags:" | grep -v "Usage:" | head -5 | sed 's/^/Error details: /' | grep -v '^Error details: *$'
           
           # Create failure annotation
           printf "**Manual Rollback Failed**\n\n**Application:** %s\n\n**Target:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nManual investigation may be required." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "error" --context "manual-rollback-failed-$app_name" || true
