@@ -724,14 +724,11 @@ steps:
         
         # Direct rollback with pre-computed values
         echo "🔄 Executing rollback command..."
-        set +e
-        rollback_output=\$(argocd app rollback "$app_name" "$history_id" --timeout "$timeout" 2>&1)
-        rollback_exit_code=\$?
-        set -e
-        echo "Debug: rollback_exit_code=\${rollback_exit_code}"
-        echo "Debug: rollback_output=\${rollback_output}"
         
-        if [[ \${rollback_exit_code} -eq 0 ]]; then
+        # Execute rollback and capture result
+        if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
+          rollback_exit_code=0
+          echo "Debug: rollback_exit_code=0"
           echo "Rollback completed successfully"
           
           # Create success annotation
@@ -742,9 +739,9 @@ steps:
           buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
           
         else
-          echo "❌ Rollback failed with exit code: \${rollback_exit_code}"
-          # Filter out help text and only show actual errors
-          echo "\${rollback_output}" | grep -v "Available Commands:" | grep -v "Flags:" | grep -v "Usage:" | head -5 | sed 's/^/Error details: /' | grep -v '^Error details: *$'
+          rollback_exit_code=1
+          echo "Debug: rollback_exit_code=1"
+          echo "❌ Rollback command failed"
           
           # Create failure annotation
           printf "**Manual Rollback Failed**\n\n**Application:** %s\n\n**Target:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nManual investigation may be required." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "error" --context "manual-rollback-failed-$app_name" || true
