@@ -739,7 +739,7 @@ steps:
           buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
           
         else
-          echo "❌ Rollback failed with exit code: $rollback_exit_code"
+          echo "❌ Rollback failed with exit code: \$rollback_exit_code"
           # Filter out help text and only show actual errors
           echo "$rollback_output" | grep -v "Available Commands:" | grep -v "Flags:" | grep -v "Usage:" | head -5 | sed 's/^/Error details: /' | grep -v '^Error details: *$'
           
