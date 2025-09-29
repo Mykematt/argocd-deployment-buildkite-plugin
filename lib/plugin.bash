@@ -238,58 +238,26 @@ collect_app_logs() {
         echo "   ⚠️  Failed to get application details" >&2
     else
         # Extract resource status information
-        jq -r '.status.resources[]? | "\(.kind)/\(.namespace)/\(.name): \(.status) - \(.health.status // "unknown")"' "$log_dir/application-details.json" \
-            > "$log_dir/resource-status.log" 2>/dev/null || true
+        echo "📦 Extracting resource status..." >&2
+        jq -r '.status.resources[]? | "\(.kind)/\(.namespace)/\(.name): \(.status) - \(.health.status // "unknown")"' \
+            "$log_dir/application-details.json" > "$log_dir/resource-status.log" 2>/dev/null || \
+            echo "   ⚠️  Failed to extract resource status" >&2
     fi
 
-    # Get pod logs and container status
-    echo "📡 Collecting pod and container information..." >&2
-    if [ -f "$log_dir/application-details.json" ]; then
-        # Extract all pod resources
-        jq -r '.status.resources[]? | select(.kind == "Pod") | "\(.namespace)/\(.name)"' "$log_dir/application-details.json" 2>/dev/null | \
-        while read -r pod; do
-            local namespace="${pod%%/*}"
-            local pod_name="${pod#*/}"
-            
-            if [[ -z "$namespace" || -z "$pod_name" ]]; then
-                continue
-            fi
-            
-            echo "   📦 Pod: $namespace/$pod_name" >&2
-            
-            # Get pod logs
-            echo "      📄 Getting logs for pod $pod_name" >&2
-            argocd app logs "$app_name" --kind "Pod" --namespace "$namespace" --resource-name "$pod_name" --tail 100 \
-                > "$log_dir/pod_logs/pod-${namespace}-${pod_name//\//-}.log" 2>&1 || \
-                echo "      ⚠️  Failed to get logs for pod $pod_name" >&2
-            
-            # Get container status
-            echo "      📦 Container status:" >&2
-            jq -r --arg ns "$namespace" --arg pn "$pod_name" \
-                '.status.resources[]? | select(.kind == "Pod" and .namespace == $ns and .name == $pn) | "\(.name) - Status: \(.status) - Health: \(.health.status // "unknown")"' \
-                "$log_dir/application-details.json" 2>/dev/null | while read -r status; do
-                echo "         $status" >&2
-            done
-            
-            # Get pod events
-            echo "      ⚡ Pod events:" >&2
-            argocd app events "$app_name" --resource-kind "Pod" --resource-namespace "$namespace" --resource-name "$pod_name" 2>/dev/null | \
-                head -20 2>&1 | while read -r event; do
-                echo "         $event" >&2
-            done || echo "         No events found" >&2
-            
-            echo "" >&2
-            
-        done
-    else
-        echo "   ⚠️  Could not collect pod details - application details not available" >&2
-    fi
+    # Get application logs (simplified, scalable approach)
+    echo "📄 Collecting application logs..." >&2
+    local log_lines
+    log_lines=$(plugin_read_config LOG_LINES "1000")
+    argocd app logs "$app_name" --tail "$log_lines" > "$log_dir/application-logs.log" 2>&1 || \
+        echo "   ⚠️  Failed to get application logs" >&2
     
-    # Get application events
+    # Get application events (using app status conditions instead of non-existent events command)
     echo "📋 Application-level events:" >&2
-    argocd app events "$app_name" 2>&1 | head -50 | tee "$log_dir/application-events.log" | while read -r event; do
+    argocd app get "$app_name" --output json 2>/dev/null | \
+        jq -r '.status.conditions[]? | "[\(.lastTransitionTime)] \(.type): \(.message)"' 2>&1 | \
+        tee "$log_dir/application-events.log" | while read -r event; do
         echo "   $event" >&2
-    done || true
+    done || echo "   No application events found" >&2
     
     echo "" >&2
     echo "✅ Log and diagnostic information collected" >&2
