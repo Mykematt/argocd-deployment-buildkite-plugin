@@ -96,15 +96,25 @@ validate_config() {
 get_previous_stable_deployment() {
     local app_name="$1"
     
-    echo "🔍 Getting previous deployment from ArgoCD history..." >&2
+    echo "🔍 Getting previous stable deployment..." >&2
     
-    # Simply get the second most recent deployment from history
-    # ArgoCD history is sorted with newest first, so line 2 is the previous deployment
+    # First try to get last known stable deployment from metadata (from previous plugin usage)
+    local last_stable_id
+    last_stable_id=$(get_metadata "deployment:argocd:${app_name}:last_stable_history_id" 2>/dev/null || echo "")
+    
+    if [[ -n "$last_stable_id" && "$last_stable_id" =~ ^[0-9]+$ ]]; then
+        echo "📍 Found last stable deployment from metadata: History ID $last_stable_id" >&2
+        echo "$last_stable_id"
+        return 0
+    fi
+    
+    # Fallback: Get previous deployment from history (skip header and current deployment)
+    echo "📋 No stable deployment in metadata, falling back to ArgoCD history..." >&2
     local previous_history_id
-    previous_history_id=$(argocd app history "$app_name" 2>/dev/null | awk 'NR==2 {print $1}' || echo "")
+    previous_history_id=$(argocd app history "$app_name" 2>/dev/null | awk 'NR==3 {print $1}' || echo "")
     
     if [[ -n "$previous_history_id" && "$previous_history_id" =~ ^[0-9]+$ ]]; then
-        echo "📍 Found previous deployment: History ID $previous_history_id" >&2
+        echo "📍 Found previous deployment from history: History ID $previous_history_id" >&2
         echo "$previous_history_id"
         return 0
     else

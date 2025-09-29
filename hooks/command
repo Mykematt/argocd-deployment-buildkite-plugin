@@ -176,6 +176,10 @@ deploy_application() {
         echo "✅ Deployment successful"
         echo "   Previous: $stable_revision"
         echo "   Current:  $new_stable_revision"
+        
+        # Store this as the last known stable deployment for future rollbacks
+        set_metadata "deployment:argocd:${app_name}:last_stable_history_id" "$new_stable_revision"
+        echo "📝 Stored stable deployment: History ID $new_stable_revision"
     else
         echo "🚨 Deployment sync failed with exit code: $deploy_exit_code"
         previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
