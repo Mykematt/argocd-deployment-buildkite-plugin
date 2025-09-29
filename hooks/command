@@ -242,9 +242,12 @@ execute_rollback() {
     local rollback_log_file
     rollback_log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
     
-    # Get current stable deployment (what we're rolling back from)
-    local stable_revision
-    stable_revision=$(get_current_stable_deployment "$app_name")
+    # For manual rollback, we don't need current deployment since target is explicit
+    # Only get current deployment for logging purposes
+    local stable_revision=""
+    if [[ "$rollback_mode" != "manual" ]]; then
+        stable_revision=$(get_current_stable_deployment "$app_name")
+    fi
     
     if [[ -z "$target_revision" || "$target_revision" == "unknown" ]]; then
         echo "❌ Error: No target revision available"
