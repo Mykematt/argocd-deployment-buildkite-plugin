@@ -724,8 +724,12 @@ steps:
         
         # Direct rollback with pre-computed values
         echo "🔄 Executing rollback command..."
+        set +e
         rollback_output=\$(argocd app rollback "$app_name" "$history_id" --timeout "$timeout" 2>&1)
         rollback_exit_code=\$?
+        set -e
+        echo "Debug: rollback_exit_code=\$rollback_exit_code"
+        echo "Debug: rollback_output=\$rollback_output"
         
         if [[ \$rollback_exit_code -eq 0 ]]; then
           echo "Rollback completed successfully"
