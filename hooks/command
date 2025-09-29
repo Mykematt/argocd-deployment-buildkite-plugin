@@ -3,22 +3,27 @@ set -euo pipefail
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
-# shellcheck source=lib/plugin.bash
+# Source shared utilities and plugin configuration
+# shellcheck source=../lib/shared.bash
+. "$DIR/../lib/shared.bash"
+# shellcheck source=../lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
 
-# Cleanup function
-cleanup() {
-    local exit_code=$?
-    if [[ $exit_code -ne 0 ]]; then
-        echo "🚨 Script exited with error code: $exit_code"
-        # Clean up any temporary files or processes if needed
-        # This helps prevent bash context corruption
-    fi
-    exit $exit_code
-}
+# Source feature modules
+# shellcheck source=../lib/modules/argocd.bash
+. "$DIR/../lib/modules/argocd.bash"
+# shellcheck source=../lib/modules/health.bash
+. "$DIR/../lib/modules/health.bash"
+# shellcheck source=../lib/modules/logging.bash
+. "$DIR/../lib/modules/logging.bash"
+# shellcheck source=../lib/modules/rollback.bash
+. "$DIR/../lib/modules/rollback.bash"
+# shellcheck source=../lib/modules/notifications.bash
+. "$DIR/../lib/modules/notifications.bash"
 
-# Set up cleanup trap
-trap cleanup EXIT ERR
+# Set up error handling and debug mode
+setup_error_trap
+enable_debug_if_requested
 
 # Main function
 main() {
@@ -26,33 +31,32 @@ main() {
     local mode
     local rollback_mode
     
+    log_info "Starting ArgoCD deployment plugin"
+    
     app_name=$(plugin_read_config APP "")
     mode=$(plugin_read_config MODE "deploy")
 
     # Validate app name first
-    if [[ -z "$app_name" ]]; then
-        echo "Error: app parameter is required"
-        exit 1
-    fi
+    validate_required_config "app parameter" "$app_name"
     
     # Validate and set rollback_mode based on mode
     if [[ "$mode" == "deploy" ]]; then
         rollback_mode=$(plugin_read_config ROLLBACK_MODE "auto")  # Default to auto for deploy
         # Validate rollback_mode for deploy
         if [[ "$rollback_mode" != "auto" && "$rollback_mode" != "manual" ]]; then
-            echo "❌ Error: Invalid rollback_mode '$rollback_mode' for deploy mode. Must be 'auto' or 'manual'"
-            return 1
+            log_error "Invalid rollback_mode '$rollback_mode' for deploy mode. Must be 'auto' or 'manual'"
+            exit 1
         fi
     elif [[ "$mode" == "rollback" ]]; then
         rollback_mode=$(plugin_read_config ROLLBACK_MODE "")      # REQUIRED for rollback - no default
         if [[ -z "$rollback_mode" ]]; then
-            echo "❌ Error: rollback_mode is required for rollback mode. Must be 'auto' or 'manual'"
-            echo "💡 Specify rollback_mode: auto (previous version) or manual (specific target_revision)"
-            return 1
+            log_error "rollback_mode is required for rollback mode. Must be 'auto' or 'manual'"
+            log_info "Specify rollback_mode: auto (previous version) or manual (specific target_revision)"
+            exit 1
         fi
         if [[ "$rollback_mode" != "auto" && "$rollback_mode" != "manual" ]]; then
-            echo "❌ Error: Invalid rollback_mode '$rollback_mode' for rollback mode. Must be 'auto' or 'manual'"
-            return 1
+            log_error "Invalid rollback_mode '$rollback_mode' for rollback mode. Must be 'auto' or 'manual'"
+            exit 1
         fi
         
         # For manual rollback mode, target revision is required
@@ -60,22 +64,21 @@ main() {
             local target_revision
             target_revision=$(plugin_read_config TARGET_REVISION "")
             if [[ -z "$target_revision" ]]; then
-                echo "target_revision is required when mode is 'rollback' and rollback_mode is 'manual'"
-                echo "💡 Specify either:"
-                echo "   - ArgoCD History ID (e.g., '5')"
-                echo "   - Git commit SHA (e.g., 'abc123def456')"
-                return 1
+                log_error "target_revision is required when mode is 'rollback' and rollback_mode is 'manual'"
+                log_info "Specify either:"
+                log_info "   - ArgoCD History ID (e.g., '5')"
+                log_info "   - Git commit SHA (e.g., 'abc123def456')"
+                exit 1
             fi
         fi
     else
-        echo "❌ Error: Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
-        return 1
+        log_error "Invalid mode '$mode'. Must be 'deploy' or 'rollback'"
+        exit 1
     fi
     
-    # Validate requirements
+    # Validate requirements and setup
     validate_requirements
-    
-    # Setup ArgoCD authentication
+    validate_notification_config
     setup_argocd_auth
     
     case "$mode" in
@@ -85,21 +88,24 @@ main() {
         "rollback")
             # For explicit rollback mode, determine target revision
             local target_revision
+            local log_file
+            log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
+            
             if [[ "$rollback_mode" == "manual" ]]; then
                 # Use specified target revision for manual rollback
                 target_revision=$(plugin_read_config TARGET_REVISION "")
-                echo "🎯 Manual rollback mode: using specified target revision $target_revision"
+                log_info "Manual rollback mode: using specified target revision $target_revision"
             else
                 # Use previous stable deployment from ArgoCD history for auto rollback
                 target_revision=$(get_previous_stable_deployment "$app_name")
                 if [[ -z "$target_revision" || "$target_revision" == "unknown" ]]; then
-                    echo "No previous version available for rollback"
-                    echo "💡 Use rollback_mode: manual with target_revision instead"
-                    return 1
+                    log_error "No previous version available for rollback"
+                    log_info "Use rollback_mode: manual with target_revision instead"
+                    exit 1
                 fi
-                echo "🤖 Auto rollback mode: using previous revision $target_revision"
+                log_info "Auto rollback mode: using previous revision $target_revision"
             fi
-            execute_rollback "$app_name" "$target_revision" "explicit"
+            execute_rollback "$app_name" "$target_revision" "explicit" "$log_file"
             ;;
     esac
 }
@@ -109,8 +115,14 @@ deploy_application() {
     local app_name="$1"
     local rollback_mode="$2"
     
-    echo "🚀 Starting deployment for ArgoCD application: $app_name"
-    echo "📋 Rollback mode: $rollback_mode"
+    log_info "Starting deployment for ArgoCD application: $app_name"
+    log_info "Rollback mode: $rollback_mode"
+    
+    # Validate application exists
+    if ! application_exists "$app_name"; then
+        log_error "Application $app_name does not exist or is not accessible"
+        exit 1
+    fi
     
     # Create deployment log
     local log_file
@@ -127,18 +139,14 @@ deploy_application() {
     local timeout
     timeout=$(plugin_read_config TIMEOUT "300")
     
-    echo "📦 Syncing ArgoCD application..."
-    {
-        echo "=== Deployment Command Output ==="
-        argocd app sync "$app_name" --timeout "$timeout" 2>&1
-        echo "Exit code: $?"
-    } >> "$log_file"
+    log_info "Syncing ArgoCD application..."
     
-    echo "🔄 Executing sync command..."
-    set +e  # Temporarily disable exit on error
-    argocd app sync "$app_name" --timeout "$timeout"
-    deploy_exit_code=$?
-    set -e  # Re-enable exit on error
+    # Execute sync using module function
+    if execute_argocd_sync "$app_name" "$timeout" "$log_file"; then
+        deploy_exit_code=0
+    else
+        deploy_exit_code=1
+    fi
     
     if [[ $deploy_exit_code -eq 0 ]]; then
         # Get the new stable deployment after sync (History ID format)
@@ -164,7 +172,7 @@ deploy_application() {
         fi
         
         if ! monitor_application_health "$app_name" "$retry_enabled"; then
-            echo "🚨 Health check failed after deployment"
+            log_error "Health check failed after deployment"
             previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
             handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "health_check_failed"
             return  # Let handle_deployment_failure manage the exit
@@ -173,624 +181,20 @@ deploy_application() {
         # Collect logs and upload artifacts if enabled
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
-        echo "✅ Deployment successful"
-        echo "   Previous: $stable_revision"
-        echo "   Current:  $new_stable_revision"
+        log_success "Deployment successful"
+        log_info "Previous: $stable_revision"
+        log_info "Current:  $new_stable_revision"
         
         # Store this as the last known stable deployment for future rollbacks
         set_metadata "deployment:argocd:${app_name}:last_stable_history_id" "$new_stable_revision"
-        echo "📝 Stored stable deployment: History ID $new_stable_revision"
+        log_info "Stored stable deployment: History ID $new_stable_revision"
+        
+        # Send success notification if configured
+        send_deployment_success_notification "$app_name" "$stable_revision" "$new_stable_revision"
     else
-        echo "🚨 Deployment sync failed with exit code: $deploy_exit_code"
+        log_error "Deployment sync failed with exit code: $deploy_exit_code"
         previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" || echo "")
         handle_deployment_failure "$app_name" "$rollback_mode" "$previous_revision" "$log_file" "deployment_failed"
-    fi
-}
-
-handle_deployment_failure() {
-    local app_name="$1"
-    local rollback_mode="$2"
-    local previous_revision="$3"
-    local log_file="$4"
-    local failure_reason="$5"
-    
-    # Update metadata with failure
-    set_deployment_metadata "$app_name" "failed" "failed"
-    set_metadata "deployment:argocd:${app_name}:failure_reason" "$failure_reason"
-    
-    # Update log with failure
-    echo "=== Deployment Result: FAILED - $failure_reason ===" >> "$log_file"
-    
-    # Create failure annotation
-    create_deployment_annotation "$app_name" "$previous_revision" "$previous_revision" "failed"
-    
-    # Handle rollback based on mode
-    if [[ "$rollback_mode" == "auto" ]]; then
-        echo "🤖 Auto rollback mode: initiating automatic rollback..."
-        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            echo "No previous version available for rollback"
-            handle_log_collection_and_artifacts "$app_name" "$log_file"
-            exit 1
-        fi
-        execute_rollback "$app_name" "$previous_revision" "automatic"
-    else
-        # rollback_mode == "manual"
-        echo "📋 Manual rollback mode: injecting block step for user decision..."
-        inject_rollback_decision_block "$app_name" "$previous_revision"
-        
-        # Collect logs and upload artifacts for manual review
-        handle_log_collection_and_artifacts "$app_name" "$log_file"
-        
-        # Send notification about failure
-        send_rollback_notification "$app_name" "current" "$previous_revision" "$failure_reason"
-        
-        echo "⏸️  Pipeline paused for manual rollback decision"
-        # Exit successfully - the block step will handle the rollback decision
-        exit 0
-    fi
-}
-
-execute_rollback() {
-    local app_name="$1"
-    local target_revision="$2"  # History ID format
-    local rollback_type="$3"  # "automatic" or "explicit"
-    
-    echo "🔄 Starting $rollback_type rollback for ArgoCD application: $app_name"
-    echo "📋 Target revision: $target_revision"
-    
-    # Create rollback log
-    local rollback_log_file
-    rollback_log_file=$(create_deployment_log "$app_name" "rollback" "in_progress")
-    
-    # Get current deployment for logging purposes (always needed for meaningful logs)
-    local stable_revision
-    stable_revision=$(get_current_stable_deployment "$app_name")
-    
-    if [[ -z "$target_revision" || "$target_revision" == "unknown" ]]; then
-        echo "❌ Error: No target revision available"
-        echo "=== Rollback Result: FAILED - No target revision ===" >> "$rollback_log_file"
-        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
-        exit 1
-    fi
-    
-    echo "⏪ Rolling back from $stable_revision to $target_revision..."
-    
-    # Store rollback metadata
-    set_rollback_metadata "$app_name" "rolling_back" "" "$stable_revision" "$target_revision"
-    
-    # Execute rollback using helper function
-    local timeout
-    timeout=$(plugin_read_config TIMEOUT "300")
-    
-    # Check if auto-sync is enabled (need to disable it temporarily for proper rollback)
-    sync_policy=$(argocd app get "$app_name" -o json | jq -r '.spec.syncPolicy.automated // empty' || echo "")
-    
-    rollback_success=false
-    auto_sync_was_enabled=false
-    
-    if [[ -n "$sync_policy" ]]; then
-        echo "🔄 Auto-sync detected - temporarily disabling for proper rollback"
-        auto_sync_was_enabled=true
-        
-        # Step 1: Disable auto-sync
-        echo "🚫 Disabling auto-sync..."
-        {
-            echo "=== Disabling Auto-Sync ==="
-            echo "Command: argocd app set $app_name --sync-policy manual"
-            argocd app set "$app_name" --sync-policy manual 2>&1
-            echo "Exit code: $?"
-        } >> "$rollback_log_file"
-        
-        set +e
-        disable_output=$(argocd app set "$app_name" --sync-policy manual 2>&1)
-        disable_exit_code=$?
-        set -e
-        
-        if [[ $disable_exit_code -ne 0 ]]; then
-            echo "❌ Failed to disable auto-sync with exit code: $disable_exit_code"
-            echo "ArgoCD disable error output:"
-            echo "$disable_output"
-            echo "⚠️  Proceeding with rollback anyway..."
-            auto_sync_was_enabled=false
-        else
-            echo "✅ Auto-sync disabled successfully"
-        fi
-    fi
-    
-    # Step 2: Perform rollback using helper function
-    echo "⏪ Performing rollback to revision: $target_revision"
-    {
-        echo "=== Rollback Command Output ==="
-        echo "Looking up history ID for revision: $target_revision"
-        argocd app history "$app_name" | head -21
-    } >> "$rollback_log_file"
-    
-    # Use helper function to look up deployment history ID and execute rollback
-    set +e
-    history_id=$(lookup_deployment_history_id "$app_name" "$target_revision")
-    lookup_exit_code=$?
-    set -e
-    
-    if [[ $lookup_exit_code -eq 0 ]]; then
-        set +e
-        rollback_output=$(argocd app rollback "$app_name" "$history_id" --timeout "$timeout" 2>&1)
-        rollback_exit_code=$?
-        set -e
-        
-        if [[ $rollback_exit_code -eq 0 ]]; then
-            echo "✅ Rollback command succeeded"
-            
-            # Wait for rollback to complete (only for auto rollback)
-            if [[ "$rollback_type" == "automatic" ]]; then
-                echo "⏳ Waiting for rollback to complete..."
-                set +e
-                wait_output=$(argocd app wait "$app_name" --health --timeout "$timeout" 2>&1)
-                wait_exit_code=$?
-                set -e
-                
-                if [[ $wait_exit_code -eq 0 ]]; then
-                    echo "✅ Rollback completed successfully"
-                    rollback_success=true
-                else
-                    echo "❌ Rollback wait failed with exit code: $wait_exit_code"
-                    echo "ArgoCD wait error output: $wait_output"
-                    rollback_success=false
-                fi
-            else
-                # For explicit rollbacks, don't wait - user initiated it deliberately
-                echo "✅ Explicit rollback command completed"
-                rollback_success=true
-            fi
-        else
-            echo "❌ ArgoCD rollback command failed with exit code: $rollback_exit_code"
-            echo "ArgoCD rollback error output: $rollback_output"
-            rollback_success=false
-        fi
-    else
-        echo "❌ Failed to lookup deployment history ID for revision: $target_revision"
-        rollback_success=false
-    fi
-    
-    # Step 3: Re-enable auto-sync if it was originally enabled
-    if [[ "$auto_sync_was_enabled" == "true" ]]; then
-        echo "🔄 Re-enabling auto-sync..."
-        {
-            echo "=== Re-enabling Auto-Sync ==="
-            echo "Command: argocd app set $app_name --sync-policy automated"
-            argocd app set "$app_name" --sync-policy automated 2>&1
-            echo "Exit code: $?"
-        } >> "$rollback_log_file"
-        
-        set +e
-        reenable_output=$(argocd app set "$app_name" --sync-policy automated 2>&1)
-        reenable_exit_code=$?
-        set -e
-        
-        if [[ $reenable_exit_code -eq 0 ]]; then
-            echo "✅ Auto-sync re-enabled successfully"
-        else
-            echo "⚠️  Failed to re-enable auto-sync (exit code: $reenable_exit_code)"
-            echo "ArgoCD re-enable error output:"
-            echo "$reenable_output"
-        fi
-    fi
-    
-    # Handle rollback result
-    if [[ "$rollback_success" == "true" ]]; then
-        # Update metadata with success
-        set_deployment_metadata "$app_name" "rolled_back" "rollback_success" "$target_revision"
-        
-        # Update log with success
-        echo "=== Rollback Result: SUCCESS ===" >> "$rollback_log_file"
-        echo "Rolled back to revision: $target_revision" >> "$rollback_log_file"
-        
-        create_rollback_annotation "$app_name" "$stable_revision" "$target_revision"
-        
-        # Collect logs and upload artifacts
-        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
-        
-        # Send success notification
-        send_rollback_notification "$app_name" "$stable_revision" "$target_revision" "rollback_success"
-        
-        echo "✅ Rollback successful"
-        echo "   Failed:     $stable_revision"
-        echo "   Rolled to:  $target_revision"
-    else
-        # Update metadata with failure
-        set_deployment_metadata "$app_name" "rollback_failed" "rollback_failed"
-        
-        # Update log with failure
-        echo "=== Rollback Result: FAILED ===" >> "$rollback_log_file"
-        
-        # Collect logs and upload artifacts even on failure
-        handle_log_collection_and_artifacts "$app_name" "$rollback_log_file"
-        
-        # Send failure notification
-        send_rollback_notification "$app_name" "$stable_revision" "$target_revision" "rollback_failed"
-        
-        echo "❌ Rollback failed"
-        exit 1
-    fi
-}
-
-# Health monitoring functions
-monitor_application_health() {
-    local app_name="$1"
-    local retry_enabled="${2:-true}"  # Default to true for backward compatibility
-    
-    if [[ "$retry_enabled" == "false" ]]; then
-        echo "📋 Manual rollback mode - checking health once without retry"
-        check_application_health "$app_name"
-        health_exit_code=$?
-        
-        if [[ $health_exit_code -eq 0 ]]; then
-            echo "✅ Application health check passed"
-            return 0
-        else
-            echo "❌ Application is unhealthy - manual intervention required"
-            return $health_exit_code
-        fi
-    fi
-    
-    # Auto rollback mode - full health monitoring with retries
-    health_check_interval=$(plugin_read_config HEALTH_CHECK_INTERVAL "30")
-    health_check_timeout=$(plugin_read_config HEALTH_CHECK_TIMEOUT "300")
-    
-    echo "🏥 Starting health monitoring for $app_name (auto rollback mode)..."
-    
-    local start_time
-    start_time=$(date +%s)
-    local end_time
-    end_time=$((start_time + health_check_timeout))
-    
-    while [[ $(date +%s) -lt $end_time ]]; do
-        check_application_health "$app_name"
-        health_exit_code=$?
-        
-        if [[ $health_exit_code -eq 0 ]]; then
-            echo "✅ Application health check passed"
-            return 0
-        elif [[ $health_exit_code -eq 2 ]]; then
-            echo "💥 Application is degraded - failing fast instead of waiting for timeout"
-            return 2
-        fi
-        
-        echo "⏳ Waiting ${health_check_interval}s before next health check..."
-        sleep "$health_check_interval"
-    done
-    
-    echo "❌ Health check timeout reached (application never became healthy)"
-    return 1
-}
-
-check_application_health() {
-    local app_name="$1"
-    
-    # Get application status via ArgoCD API
-    local app_status
-    app_status=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.status.health.status // "Unknown"')
-    
-    case "$app_status" in
-        "Healthy")
-            return 0
-            ;;
-        "Progressing")
-            echo "🔄 Application is progressing..."
-            return 1
-            ;;
-        "Degraded")
-            echo "❌ Application is degraded - triggering immediate rollback"
-            return 2  # Special exit code for immediate failure
-            ;;
-        "Suspended")
-            echo "⏸️  Application is suspended"
-            return 1
-            ;;
-        *)
-            echo "❓ Unknown application status: $app_status"
-            return 1
-            ;;
-    esac
-}
-
-# Notification functions
-send_rollback_notification() {
-    local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
-    local reason="$4"
-    
-    local slack_channel
-    slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
-    
-    # Send Slack notification using Buildkite's native integration
-    if [[ -n "$slack_channel" ]]; then
-        echo "📢 Sending Slack notification to $slack_channel..."
-        
-        # Inject notification step using Buildkite's native Slack integration
-        local notification_pipeline
-        notification_pipeline=$(cat <<-EOF
-steps:
-  - label: ":slack: ArgoCD Rollback Alert"
-    command: "echo 'Sending rollback notification to Slack...'"
-    notify:
-      - slack:
-          channels:
-            - "$slack_channel"
-          message: |
-            🚨 *ArgoCD Rollback Alert*
-            
-            *Application:* \`$app_name\`
-            *Reason:* $reason
-            *From Revision:* \`$from_revision\`
-            *To Revision:* \`$to_revision\`
-            *Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-            *Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-            *Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
-EOF
-        )
-        
-        echo "$notification_pipeline" | buildkite-agent pipeline upload || echo "⚠️  Failed to inject Slack notification step"
-        echo "✅ Slack notification step injected for $slack_channel"
-    else
-        echo "ℹ️  No Slack channel configured - skipping notification"
-    fi
-}
-
-create_deployment_annotation() {
-    local app_name="$1"
-    local previous_version="$2"
-    local current_version="$3"
-    local deployment_result="$4"
-    
-    local annotation
-    case "$deployment_result" in
-        "success")
-            annotation="✅ **ArgoCD Deployment Successful**
-
-**Application:** \`$app_name\`  
-**Previous Version:** \`$previous_version\`  
-**Current Version:** \`$current_version\`  
-**Status:** \`$deployment_result\`  
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            ;;
-        "failed")
-            annotation="❌ **ArgoCD Deployment Failed**
-
-**Application:** \`$app_name\`  
-**Status:** \`$deployment_result\`  
-**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            ;;
-    esac
-    
-    local style
-    if [[ "$deployment_result" == "success" ]]; then
-        style="success"
-    else
-        style="error"
-    fi
-    
-    buildkite-agent annotate "$annotation" --style "$style" --context "argocd-deployment-$app_name" || true
-}
-
-create_rollback_annotation() {
-    local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
-    
-    local annotation="🔄 **ArgoCD Rollback**
-
-**Application:** \`$app_name\`  
-**Failed Revision:** \`$from_revision\`  
-**Rolled Back To:** \`$to_revision\`  
-**Build:** [${BUILDKITE_BUILD_NUMBER:-unknown}](${BUILDKITE_BUILD_URL:-#})  
-**Pipeline:** \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`  
-**Branch:** \`${BUILDKITE_BRANCH:-unknown}\`"
-    
-    buildkite-agent annotate "$annotation" --style "warning" --context "argocd-rollback-$app_name" || true
-}
-
-handle_log_collection_and_artifacts() {
-    local app_name="$1"
-    local deployment_log_file="$2"
-    
-    collect_logs=$(plugin_read_config COLLECT_LOGS "false")
-    upload_artifacts_enabled=$(plugin_read_config UPLOAD_ARTIFACTS "false")
-    log_lines=$(plugin_read_config LOG_LINES "1000")
-    
-    if [[ "$collect_logs" == "true" ]]; then
-        echo "📋 Log collection enabled, gathering ArgoCD application logs..."
-        local log_dir
-        log_dir=$(collect_app_logs "$app_name" "$log_lines")
-        
-        # Copy deployment log to the log directory
-        if [[ -f "$deployment_log_file" ]]; then
-            cp "$deployment_log_file" "$log_dir/"
-        fi
-        
-        if [[ "$upload_artifacts_enabled" == "true" ]]; then
-            upload_artifacts "$log_dir" "$app_name"
-        else
-            echo "📤 Artifact upload disabled, logs collected in: $log_dir"
-        fi
-    else
-        echo "📋 Log collection disabled"
-        
-        # Still upload the deployment log if artifacts are enabled
-        if [[ "$upload_artifacts_enabled" == "true" && -f "$deployment_log_file" ]]; then
-            echo "📤 Uploading deployment log..."
-            buildkite-agent artifact upload "$deployment_log_file" || true
-        fi
-    fi
-}
-
-inject_rollback_decision_block() {
-    local app_name="$1"
-    local previous_revision="$2"
-    
-    echo "📋 Injecting rollback decision block step for $app_name..."
-    
-    # Pre-compute everything while in plugin context (Layer 2)
-    local rollback_target
-    if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
-        rollback_target="$previous_revision"
-    else
-        # Get the current stable deployment that's actually running in the cluster
-        rollback_target=$(get_current_stable_deployment "$app_name")
-    fi
-    
-    # Get the ArgoCD history ID NOW while we have plugin functions
-    local history_id=""
-    if [[ "$rollback_target" != "unknown" ]]; then
-        history_id=$(lookup_deployment_history_id "$app_name" "$rollback_target" || echo "")
-    fi
-    
-    # Get connection details NOW
-    local timeout
-    local timestamp
-    timeout=$(plugin_read_config TIMEOUT "300")
-    
-    # Pre-compute timestamp to avoid command substitution in Layer 3
-    timestamp=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-    
-    # Validate we have what we need for rollback
-    if [[ "$rollback_target" == "unknown" || -z "$history_id" ]]; then
-        echo "❌ Error: Cannot determine rollback target for manual rollback"
-        echo "   rollback_target: $rollback_target"
-        echo "   history_id: $history_id"
-        echo "   This usually means:"
-        echo "   - No previous deployment exists"
-        echo "   - ArgoCD history lookup failed"
-        echo "   - Application has never been successfully deployed"
-        echo ""
-        echo "   Manual rollback requires a valid previous deployment to rollback to."
-        return 1
-    fi
-    
-    echo "✅ Pre-computed rollback: target=$rollback_target, history_id=$history_id"
-    
-    # Create a temporary file for the pipeline YAML
-    local pipeline_file
-    pipeline_file=$(mktemp)
-    
-    # Generate the pipeline YAML with pre-baked values
-    cat > "$pipeline_file" << EOF
-steps:
-  - block: "Deployment Failed - Choose Action"
-    key: "deployment-failed-choose-action"
-    prompt: |
-      🚨 DEPLOYMENT FAILED: $app_name
-      
-      Please choose your next action:
-      
-      🔄 ROLLBACK (RECOMMENDED)
-      Rollback to previous stable deployment (Target: $rollback_target)
-      Safer option for production environments
-      
-      ❌ ACCEPT FAILURE  
-      Keep current failed state for debugging
-      Manual investigation required
-    fields:
-      - select: "Action"
-        key: "rollback_decision"
-        hint: "What would you like to do?"
-        required: true
-        default: "rollback"
-        options:
-          - label: "🔄 Rollback to Previous Stable Version"
-            value: "rollback"
-          - label: "❌ Accept Failure (No Rollback)"
-            value: "accept"
-
-  - label: "Execute User Decision"
-    depends_on: "deployment-failed-choose-action"
-    agents:
-      queue: kubernetes
-    command: |
-      echo "--- Checking user decision from block step"
-      
-      # Small delay to ensure metadata is saved
-      sleep 2
-       
-      # Use metadata directly in conditional without variable assignment
-      if buildkite-agent meta-data get "rollback_decision" --default "" | grep -q "^rollback\$"; then
-        echo "User selected: rollback"
-        echo "--- Executing rollback for $app_name"
-        echo "Target revision: $rollback_target"
-        echo "History ID: $history_id"
-        
-        # Authenticate with ArgoCD first (use Buildkite plugin environment variables)
-        echo "🔐 Authenticating with ArgoCD server..."
-        if ! argocd login "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_SERVER" --username "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ARGOCD_USERNAME" --password "\$ARGOCD_PASSWORD" --insecure >/dev/null 2>&1; then
-          echo "❌ Failed to authenticate with ArgoCD"
-          exit 1
-        fi
-        
-        # Direct rollback with pre-computed values
-        echo "🔄 Executing rollback command..."
-        
-        # Execute rollback and capture result
-        if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
-          rollback_exit_code=0
-          echo "Debug: rollback_exit_code=0"
-          echo "Rollback completed successfully"
-          
-          # Create success annotation
-          printf "**Manual Rollback Successful**\n\n**Application:** %s\n\n**Rolled back to:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nThe application has been restored to the previous stable version." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "success" --context "manual-rollback-$app_name" || true
-            
-          # Update metadata
-          buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_success"
-          buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
-          
-        else
-          rollback_exit_code=1
-          echo "Debug: rollback_exit_code=1"
-          echo "❌ Rollback command failed"
-          
-          # Create failure annotation
-          printf "**Manual Rollback Failed**\n\n**Application:** %s\n\n**Target:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nManual investigation may be required." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "error" --context "manual-rollback-failed-$app_name" || true
-            
-          # Update metadata
-          buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_failed"
-          buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rollback_failed"
-          
-          exit 1
-        fi
-        
-      elif buildkite-agent meta-data get "rollback_decision" --default "" | grep -q "^accept\$"; then
-        echo "User selected: accept"
-        echo "--- User chose to accept deployment failure"
-        
-        # Create annotation for accepted failure
-        printf "**Deployment Failure Accepted**\n\n**Application:** %s\n\n**Action:** User chose to accept failure and skip rollback\n\n**Status:** Failed deployment left in place for debugging\n\n**Timestamp:** %s\n\nManual investigation and cleanup may be required." "$app_name" "$timestamp" | buildkite-agent annotate --style "warning" --context "accept-failure-$app_name" || true
-        
-        # Update metadata
-        buildkite-agent meta-data set "deployment:argocd:$app_name:result" "failure_accepted"
-        buildkite-agent meta-data set "deployment:argocd:$app_name:status" "failed_accepted"
-        
-        echo "Failure accepted - no rollback performed"
-        
-      else
-        echo "❌ Error: No valid decision found in metadata"
-        echo "Expected 'rollback' or 'accept', but neither pattern matched"
-        echo "Raw metadata value:"
-        buildkite-agent meta-data get "rollback_decision" --default "EMPTY" || echo "Failed to get metadata"
-        echo "Please complete the block step first"
-        exit 1
-      fi
-EOF
-    
-    echo "📤 Uploading rollback decision pipeline..."
-    local upload_output
-    if upload_output=$(buildkite-agent pipeline upload "$pipeline_file" 2>&1); then
-        echo "✅ Successfully injected rollback decision steps"
-        rm -f "$pipeline_file"
-        return 0
-    else
-        echo "❌ Failed to inject rollback decision steps - pipeline upload failed"
-        echo "Upload error: $upload_output"
-        rm -f "$pipeline_file"
-        return 1
     fi
 }
 

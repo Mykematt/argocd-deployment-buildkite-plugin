@@ -8,3 +8,4 @@ argocd-logs/
 *.log
 test_*.sh
 .bk.yaml
+tests/mocks/

@@ -127,7 +127,8 @@ EOF
   assert_failure
   # Check for either possible error message
   if ! echo "$output" | grep -q "No previous version available for rollback" && \
-     ! echo "$output" | grep -q "No previous deployment found in ArgoCD history"; then
+     ! echo "$output" | grep -q "No previous deployment found in ArgoCD history" && \
+     ! echo "$output" | grep -q "No deployment history available"; then
     echo "Expected error message not found in output"
     return 1
   fi
@@ -167,9 +168,8 @@ EOF
 }
 
 
-@test "Health monitoring can be enabled" {
+@test "Health monitoring is always enabled" {
   export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
-  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_HEALTH_CHECK='true'
 
   run "$PWD"/hooks/command
 
@@ -229,9 +229,9 @@ EOF
   assert_output --partial 'Starting deployment for ArgoCD application: test-app'
 }
 
-@test "Manual rollback block can be enabled" {
+@test "Manual rollback blocks are automatic" {
   export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_APP='test-app'
-  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_MANUAL_ROLLBACK_BLOCK='true'
+  export BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_ROLLBACK_MODE='manual'
 
   run "$PWD"/hooks/command
 

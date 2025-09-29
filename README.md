@@ -113,7 +113,7 @@ ArgoCD username. Can also be set via `ARGOCD_USERNAME` environment variable.
 
 Target revision for rollback operations. Accepts ArgoCD History IDs or Git commit SHAs.
 
-> **⚠️ Important**: ArgoCD only returns the last 10 deployment history entries by default. For manual rollbacks, use recent History IDs (visible in `argocd app history <app-name>`) or commit SHAs from recent deployments. Older deployments may not be available for rollback.
+> **💡 Important**: ArgoCD only returns the last 10 deployment history entries by default. For manual rollbacks, use recent History IDs (visible in `argocd app history <app-name>`) or commit SHAs from recent deployments. Older deployments may not be available for rollback.
 
 #### `health_check_interval` (number)
 
