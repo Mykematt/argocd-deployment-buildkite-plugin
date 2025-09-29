@@ -1,10 +1,6 @@
 #!/bin/bash
 # argocd.bash - ArgoCD API operations and authentication
 
-# Source shared utilities
-ARGOCD_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared.bash
-. "$ARGOCD_MODULE_DIR/../shared.bash"
 
 # ArgoCD authentication setup
 setup_argocd_auth() {

@@ -1,10 +1,6 @@
 #!/bin/bash
 # rollback.bash - Rollback logic and smart auto-sync management
 
-# Source shared utilities
-ROLLBACK_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared.bash
-. "$ROLLBACK_MODULE_DIR/../shared.bash"
 
 # Execute rollback operation with proper parameter handling
 execute_rollback() {

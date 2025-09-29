@@ -1,10 +1,6 @@
 #!/bin/bash
 # health.bash - Application health monitoring functions
 
-# Source shared utilities
-HEALTH_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared.bash
-. "$HEALTH_MODULE_DIR/../shared.bash"
 
 # Monitor application health with configurable retry behavior
 monitor_application_health() {

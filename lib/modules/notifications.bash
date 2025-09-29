@@ -1,10 +1,6 @@
 #!/bin/bash
 # notifications.bash - Notification functions for Slack and other integrations
 
-# Source shared utilities
-NOTIFICATIONS_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared.bash
-. "$NOTIFICATIONS_MODULE_DIR/../shared.bash"
 
 # Send rollback notification (fixed: removed recursive call to prevent infinite loops)
 send_rollback_notification() {

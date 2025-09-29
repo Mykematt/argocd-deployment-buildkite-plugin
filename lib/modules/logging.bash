@@ -1,10 +1,6 @@
 #!/bin/bash
 # logging.bash - Log collection and artifact management functions
 
-# Source shared utilities
-LOGGING_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared.bash
-. "$LOGGING_MODULE_DIR/../shared.bash"
 
 # Create deployment log file with proper temporary file handling
 create_deployment_log() {
