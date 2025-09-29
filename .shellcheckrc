@@ -1,0 +1,2 @@
+# Exclude SC1091 - shellcheck can't follow sourced files with relative paths
+exclude=SC1091
