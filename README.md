@@ -11,8 +11,6 @@ The plugin requires the following tools to be pre-installed on your Buildkite ag
 - **ArgoCD CLI** (`argocd`) - [Installation Guide](https://argo-cd.readthedocs.io/en/stable/cli_installation/)
 - **jq** - JSON processor
 
-> **Note**: The plugin does not automatically install these tools to support air-gapped/isolated network environments. Please ensure they are available on your Buildkite agents before using this plugin.
-
 ## Authentication
 
 The plugin requires ArgoCD authentication via environment variables. You must set these before your ArgoCD plugin steps:
@@ -117,10 +115,6 @@ Target revision for rollback operations. Accepts ArgoCD History IDs or Git commi
 
 > **⚠️ Important**: ArgoCD only returns the last 10 deployment history entries by default. For manual rollbacks, use recent History IDs (visible in `argocd app history <app-name>`) or commit SHAs from recent deployments. Older deployments may not be available for rollback.
 
-#### `health_check` (boolean)
-
-Enable health monitoring after deployment. Defaults to `false`.
-
 #### `health_check_interval` (number)
 
 Health check interval in seconds. Defaults to `30`. Must be between 10 and 300 seconds.
@@ -171,8 +165,7 @@ steps:
           argocd_server: "https://argocd.example.com"
           argocd_username: "admin"
           mode: "deploy"
-          rollback_mode: "auto"  # Automatic rollback on failure
-          health_check: true
+          rollback_mode: "auto"  # Default: also enabled if unset
           collect_logs: true
           upload_artifacts: true
 ```
@@ -194,7 +187,6 @@ steps:
           argocd_username: "admin"
           mode: "deploy"
           rollback_mode: "manual"  # Interactive rollback decision
-          health_check: true
           collect_logs: true
           upload_artifacts: true
           notifications:
