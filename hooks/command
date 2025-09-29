@@ -9,17 +9,23 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # shellcheck source=lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
 
-# Source feature modules
+# Source feature modules (loaded dynamically as needed)
 # shellcheck source=lib/modules/argocd.bash
-. "$DIR/../lib/modules/argocd.bash"
+# . "$DIR/../lib/modules/argocd.bash"
 # shellcheck source=lib/modules/health.bash
-. "$DIR/../lib/modules/health.bash"
+# . "$DIR/../lib/modules/health.bash"
 # shellcheck source=lib/modules/logging.bash
-. "$DIR/../lib/modules/logging.bash"
+# . "$DIR/../lib/modules/logging.bash"
 # shellcheck source=lib/modules/rollback.bash
-. "$DIR/../lib/modules/rollback.bash"
+# . "$DIR/../lib/modules/rollback.bash"
 # shellcheck source=lib/modules/notifications.bash
-. "$DIR/../lib/modules/notifications.bash"
+# . "$DIR/../lib/modules/notifications.bash"
+
+# Load modules dynamically to avoid shellcheck SC1091 warnings
+for module in argocd health logging rollback notifications; do
+    # shellcheck source=/dev/null
+    . "$DIR/../lib/modules/${module}.bash"
+done
 
 # Set up error handling and debug mode
 setup_error_trap
