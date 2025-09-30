@@ -178,6 +178,13 @@ handle_deployment_failure() {
     else
         # rollback_mode == "manual"
         log_info "Manual rollback mode: injecting block step for user decision..."
+        
+        # If no previous revision from metadata, try to get from ArgoCD history
+        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
+            log_debug "No previous revision in metadata, checking ArgoCD history for manual rollback..."
+            previous_revision=$(get_previous_stable_deployment "$app_name")
+        fi
+        
         inject_rollback_decision_block "$app_name" "$previous_revision"
         
         # Collect logs and upload artifacts for manual review
