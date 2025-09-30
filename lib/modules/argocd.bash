@@ -67,9 +67,6 @@ get_previous_stable_deployment() {
     
     log_debug "Getting previous stable deployment for $app_name"
     
-    # Debug: Always show what we're trying to do
-    echo "🔍 Debug: Searching for previous stable deployment for $app_name" >&2
-    
     # Try to get from stored metadata first
     local previous_revision
     previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" "")
@@ -80,17 +77,10 @@ get_previous_stable_deployment() {
         return 0
     fi
     
-    # Debug: Show metadata result
-    echo "🔍 Debug: Metadata previous_version = '$previous_revision'" >&2
-    
     # Fallback: Get most recent entry from ArgoCD history (any previous deployment)
-    echo "🔍 Debug: Querying ArgoCD history for $app_name" >&2
+    log_debug "Querying ArgoCD history for $app_name"
     local history_output
     history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
-    
-    # Debug: Show raw history
-    echo "🔍 Debug: Raw ArgoCD history (first 3 lines):" >&2
-    echo "$history_output" | head -3 >&2
     
     if [[ -z "$history_output" ]]; then
         log_warning "No deployment history available for $app_name"
@@ -99,7 +89,7 @@ get_previous_stable_deployment() {
     fi
     
     log_debug "Available ArgoCD history for rollback:"
-    echo "$history_output" | head -3 >&2
+    log_debug "$(echo "$history_output" | head -3)"
     
     # Get the most recent deployment from history (any available deployment)
     local previous_history_id
@@ -112,8 +102,7 @@ get_previous_stable_deployment() {
     
     if [[ -z "$previous_history_id" ]]; then
         log_warning "Could not find any valid deployment in history for $app_name"
-        log_warning "History format:"
-        echo "$history_output" | head -3 >&2
+        log_debug "History format: $(echo "$history_output" | head -3)"
         echo "unknown"
         return 1
     fi

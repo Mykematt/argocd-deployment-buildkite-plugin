@@ -28,7 +28,7 @@ execute_rollback() {
         exit 1
     fi
     
-    log_info "Rolling back from $stable_revision to $target_revision..."
+    log_info "Rolling back to revision $target_revision..."
     
     # Store rollback metadata
     set_rollback_metadata "$app_name" "rolling_back" "" "$stable_revision" "$target_revision"
@@ -165,7 +165,7 @@ handle_deployment_failure() {
         
         # If no previous revision from metadata, try to get from ArgoCD history
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_info "No previous revision in metadata, checking ArgoCD history..."
+            log_debug "No previous revision in metadata, checking ArgoCD history..."
             previous_revision=$(get_previous_stable_deployment "$app_name")
         fi
         

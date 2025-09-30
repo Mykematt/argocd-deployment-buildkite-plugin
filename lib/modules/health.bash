@@ -93,7 +93,7 @@ check_application_health() {
             return 0
             ;;
         "Progressing")
-            log_info "Application is progressing..."
+            log_debug "Application is progressing..."
             return 1
             ;;
         "Degraded")
