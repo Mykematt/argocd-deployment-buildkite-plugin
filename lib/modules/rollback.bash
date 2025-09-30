@@ -162,6 +162,13 @@ handle_deployment_failure() {
     # Handle rollback based on mode
     if [[ "$rollback_mode" == "auto" ]]; then
         log_info "Auto rollback mode: initiating automatic rollback..."
+        
+        # If no previous revision from metadata, try to get from ArgoCD history
+        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
+            log_info "No previous revision in metadata, checking ArgoCD history..."
+            previous_revision=$(get_previous_stable_deployment "$app_name")
+        fi
+        
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
             log_error "No previous version available for rollback"
             handle_log_collection_and_artifacts "$app_name" "$log_file"
