@@ -133,7 +133,7 @@ lookup_deployment_history_id() {
     if [[ -z "$history_id" ]]; then
         log_error "Could not find history ID for revision: $target_revision"
         log_info "Available history:"
-        echo "$history_output" | head -5
+        echo "$history_output" | head -5 >&2
         return 1
     fi
     

@@ -222,9 +222,9 @@ send_deployment_success_notification() {
 
 Deployment completed successfully and application is healthy."
         
-        # Create and upload notification pipeline
+        # Create and upload notification pipeline  
         local notification_pipeline
-        notification_pipeline=$(cat <<-EOF
+        notification_pipeline=$(cat <<EOF
 steps:
   - label: ":slack: Deployment Success"
     command: "echo 'Sending success notification to Slack...'"
@@ -232,8 +232,7 @@ steps:
       - slack:
           channels:
             - "$slack_channel"
-          message: |
-            $notification_message
+          message: "$notification_message"
 EOF
         )
         
