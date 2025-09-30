@@ -211,16 +211,7 @@ send_deployment_success_notification() {
     slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
     
     if [[ -n "$slack_channel" ]]; then
-        local notification_message="🚀 *ArgoCD Deployment Successful*
-
-*Application:* \`$app_name\`
-*Previous Version:* \`$previous_version\`
-*Current Version:* \`$current_version\`
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
-
-Deployment completed successfully and application is healthy."
+        local notification_message="🚀 *ArgoCD Deployment*\n\n*Application:* \`$app_name\`\n*Previous Version:* \`$previous_version\`\n*Current Version:* \`$current_version\`\n*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>\n*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`\n*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`\n\nDeployment completed successfully and application is healthy."
         
         # Create and upload notification pipeline  
         local notification_pipeline
