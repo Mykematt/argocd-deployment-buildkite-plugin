@@ -79,7 +79,7 @@ get_previous_stable_deployment() {
     
     # Fallback: Get second entry from ArgoCD history
     local history_output
-    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -20)
+    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
     
     if [[ -z "$history_output" ]]; then
         log_warning "No deployment history available for $app_name"
@@ -117,7 +117,7 @@ lookup_deployment_history_id() {
     
     # Look up in ArgoCD history
     local history_output
-    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -20)
+    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
     
     if [[ -z "$history_output" ]]; then
         log_error "No deployment history available for $app_name"
@@ -132,8 +132,8 @@ lookup_deployment_history_id() {
     
     if [[ -z "$history_id" ]]; then
         log_error "Could not find history ID for revision: $target_revision"
-        log_info "Available history:"
-        echo "$history_output" | head -5 >&2
+        echo "ℹ️  Available history:" >&2
+        echo "$history_output" >&2
         return 1
     fi
     
