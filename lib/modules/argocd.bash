@@ -67,6 +67,9 @@ get_previous_stable_deployment() {
     
     log_debug "Getting previous stable deployment for $app_name"
     
+    # Debug: Always show what we're trying to do
+    echo "🔍 Debug: Searching for previous stable deployment for $app_name" >&2
+    
     # Try to get from stored metadata first
     local previous_revision
     previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" "")
@@ -77,9 +80,17 @@ get_previous_stable_deployment() {
         return 0
     fi
     
-    # Fallback: Get second entry from ArgoCD history
+    # Debug: Show metadata result
+    echo "🔍 Debug: Metadata previous_version = '$previous_revision'" >&2
+    
+    # Fallback: Get most recent entry from ArgoCD history (any previous deployment)
+    echo "🔍 Debug: Querying ArgoCD history for $app_name" >&2
     local history_output
     history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
+    
+    # Debug: Show raw history
+    echo "🔍 Debug: Raw ArgoCD history (first 3 lines):" >&2
+    echo "$history_output" | head -3 >&2
     
     if [[ -z "$history_output" ]]; then
         log_warning "No deployment history available for $app_name"
@@ -87,12 +98,22 @@ get_previous_stable_deployment() {
         return 1
     fi
     
-    # Get the second most recent deployment (skip current one)
+    log_debug "Available ArgoCD history for rollback:"
+    echo "$history_output" | head -3 >&2
+    
+    # Get the most recent deployment from history (any available deployment)
     local previous_history_id
-    previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+    previous_history_id=$(echo "$history_output" | awk 'NR==1 {print $1}' | grep -E '^[0-9]+$' || echo "")
+    
+    # If first entry is empty, try second entry
+    if [[ -z "$previous_history_id" ]]; then
+        previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+    fi
     
     if [[ -z "$previous_history_id" ]]; then
-        log_warning "Could not find previous deployment in history for $app_name"
+        log_warning "Could not find any valid deployment in history for $app_name"
+        log_warning "History format:"
+        echo "$history_output" | head -3 >&2
         echo "unknown"
         return 1
     fi
