@@ -226,7 +226,7 @@ Deployment completed successfully and application is healthy."
         local notification_pipeline
         notification_pipeline=$(cat <<EOF
 steps:
-  - label: ":slack: Deployment Success"
+  - label: ":slack: ArgoCD Deployment"
     command: "echo 'Sending success notification to Slack...'"
     notify:
       - slack:
