@@ -172,7 +172,7 @@ handle_deployment_failure() {
         log_info "Auto rollback mode: initiating automatic rollback..."
         
         # Send notification about deployment failure and auto rollback in progress
-        send_rollback_notification "$app_name" "current" "$previous_revision" "deployment_failed_auto_rollback"
+        send_notification "$app_name" "deployment_failed_auto" "current" "$previous_revision"
         
         # If no previous revision available, try to get from ArgoCD history as fallback
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
@@ -202,7 +202,7 @@ handle_deployment_failure() {
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
         # Send notification about failure (avoid recursive calls)
-        send_rollback_notification "$app_name" "current" "$previous_revision" "$failure_reason"
+        send_notification "$app_name" "deployment_failed_manual" "current" "$previous_revision"
         
         log_info "Pipeline paused for manual rollback decision"
         # Exit successfully - the block step will handle the rollback decision
