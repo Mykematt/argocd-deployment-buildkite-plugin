@@ -55,49 +55,49 @@ send_notification() {
         
         case "$notification_type" in
             "deployment_success")
-                notification_label=":rocket: ArgoCD Deployment Passed"
+                notification_label=":rocket: ArgoCD Deployment"
                 status="Deployment successful"
                 from_label="Previous"
                 to_label="Current"
                 footer="Deployment completed successfully and application is healthy."
                 ;;
             "deployment_failed_auto")
-                notification_label=":x: ArgoCD Deployment Failed"
+                notification_label=":x: ArgoCD Deployment"
                 status="Deployment failed - Auto rollback in progress"
                 from_label="Current"
                 to_label="Target"
                 footer="Automatic rollback initiated..."
                 ;;
             "deployment_failed_manual")
-                notification_label=":x: ArgoCD Deployment Failed"
+                notification_label=":x: ArgoCD Deployment"
                 status="Deployment failed - Manual decision required"
                 from_label="Current"
                 to_label="Target"
                 footer="Manual rollback decision required on pipeline."
                 ;;
             "rollback_success_auto")
-                notification_label=":arrows_counterclockwise: ArgoCD Rollback Passed"
+                notification_label=":arrows_counterclockwise: ArgoCD Rollback"
                 status="Auto rollback successful"
                 from_label="From"
                 to_label="To"
                 footer=""
                 ;;
             "rollback_success_manual")
-                notification_label=":arrows_counterclockwise: ArgoCD Rollback Passed"
+                notification_label=":arrows_counterclockwise: ArgoCD Rollback"
                 status="Manual rollback successful"
                 from_label="From"
                 to_label="To"
                 footer=""
                 ;;
             "rollback_failed_auto")
-                notification_label=":x: ArgoCD Rollback Failed"
+                notification_label=":x: ArgoCD Rollback"
                 status="Auto rollback failed"
                 from_label="From"
                 to_label="Target"
                 footer="Manual investigation required. Check logs for details."
                 ;;
             "rollback_failed_manual")
-                notification_label=":x: ArgoCD Rollback Failed"
+                notification_label=":x: ArgoCD Rollback"
                 status="Manual rollback failed"
                 from_label="From"
                 to_label="Target"
@@ -222,42 +222,6 @@ The application has been successfully rolled back to the previous stable version
     else
         log_warning "Failed to create rollback annotation"
     fi
-}
-
-# Legacy wrapper for deployment success notifications (for backward compatibility)
-send_deployment_success_notification() {
-    local app_name="$1"
-    local previous_version="$2"
-    local current_version="$3"
-    
-    send_notification "$app_name" "deployment_success" "$previous_version" "$current_version"
-}
-
-# Legacy wrapper for rollback notifications (for backward compatibility)
-send_rollback_notification() {
-    local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
-    local reason="$4"
-    
-    # Map old reason codes to new notification types
-    case "$reason" in
-        "deployment_failed_auto_rollback")
-            send_notification "$app_name" "deployment_failed_auto" "$from_revision" "$to_revision"
-            ;;
-        "auto_rollback_success")
-            send_notification "$app_name" "rollback_success_auto" "$from_revision" "$to_revision"
-            ;;
-        "deployment_failed_manual")
-            send_notification "$app_name" "deployment_failed_manual" "$from_revision" "$to_revision"
-            ;;
-        "manual_rollback_success")
-            send_notification "$app_name" "rollback_success_manual" "$from_revision" "$to_revision"
-            ;;
-        *)
-            log_warning "Unknown notification reason: $reason"
-            ;;
-    esac
 }
 
 # Validate notification configuration

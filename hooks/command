@@ -183,7 +183,7 @@ deploy_application() {
         log_info "Current:  $new_stable_revision"
         
         # Send success notification if configured
-        send_deployment_success_notification "$app_name" "$stable_revision" "$new_stable_revision"
+        send_notification "$app_name" "deployment_success" "$stable_revision" "$new_stable_revision"
     else
         log_error "Deployment sync failed with exit code: $deploy_exit_code"
         handle_deployment_failure "$app_name" "$rollback_mode" "$stable_revision" "$log_file" "deployment_failed"
