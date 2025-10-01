@@ -170,16 +170,6 @@ handle_log_collection_and_artifacts() {
         cleanup_temp_files "$log_dir"
     else
         log_info "Log collection disabled"
-        
-        # Still upload the deployment log if artifacts are enabled
-        if [[ "$upload_artifacts_enabled" == "true" && -f "$deployment_log_file" ]]; then
-            log_info "Uploading deployment log..."
-            if buildkite-agent artifact upload "$deployment_log_file"; then
-                log_success "Deployment log uploaded"
-            else
-                log_warning "Failed to upload deployment log"
-            fi
-        fi
     fi
     
     # Clean up deployment log file
