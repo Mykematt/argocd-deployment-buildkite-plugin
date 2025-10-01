@@ -168,11 +168,9 @@ lookup_deployment_history_id() {
     
     # If it's already a history ID (numeric), return it
     if [[ "$target_revision" =~ ^[0-9]+$ ]]; then
-        log_info "Target revision is already a history ID: $target_revision"
+        log_debug "Target revision is already a history ID: $target_revision"
         echo "$target_revision"
         return 0
-    else
-        log_info "Target revision '$target_revision' is not numeric, searching in history"
     fi
     
     # Look up in ArgoCD history
