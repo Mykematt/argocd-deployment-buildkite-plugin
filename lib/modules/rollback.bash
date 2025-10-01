@@ -334,22 +334,6 @@ steps:
             buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_success"
             buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
             
-            # Send rollback success notification
-            echo "📱 Sending rollback success notification..."
-            # Create notification pipeline directly (avoid sourcing issues)
-            cat > /tmp/rollback-success-notification.yml << 'NOTIFICATION_EOF'
-steps:
-  - label: ":slack: ArgoCD Plugin Notification"
-    command: "echo 'Sending notification to Slack...'"
-    notify:
-      - slack:
-          channels:
-            - "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_NOTIFICATIONS_SLACK_CHANNEL"
-          message: "🔄 *ArgoCD Rollback Success*\\n\\n*Application:* $app_name\\n*Status:* Manual rollback successful\\n*From Revision:* $rollback_target\\n*To Revision:* $rollback_target\\n*Build:* <\${BUILDKITE_BUILD_URL:-#}|#\${BUILDKITE_BUILD_NUMBER:-unknown}>\\n*Pipeline:* \${BUILDKITE_PIPELINE_SLUG:-unknown}\\n*Branch:* \${BUILDKITE_BRANCH:-unknown}"
-NOTIFICATION_EOF
-            buildkite-agent pipeline upload /tmp/rollback-success-notification.yml || echo "Failed to send notification"
-            rm -f /tmp/rollback-success-notification.yml
-            
           else
             echo "❌ Rollback wait failed - application did not become healthy"
             
@@ -359,22 +343,6 @@ NOTIFICATION_EOF
             # Update metadata
             buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_failed"
             buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rollback_failed"
-            
-            # Send rollback failure notification
-            echo "📱 Sending rollback failure notification..."
-            # Create notification pipeline directly (avoid sourcing issues)
-            cat > /tmp/rollback-failed-notification.yml << 'NOTIFICATION_EOF'
-steps:
-  - label: ":slack: ArgoCD Plugin Notification"
-    command: "echo 'Sending notification to Slack...'"
-    notify:
-      - slack:
-          channels:
-            - "\$BUILDKITE_PLUGIN_ARGOCD_DEPLOYMENT_NOTIFICATIONS_SLACK_CHANNEL"
-          message: "❌ *ArgoCD Rollback Failed*\\n\\n*Application:* $app_name\\n*Status:* Manual rollback failed\\n*From Revision:* $rollback_target\\n*Target Revision:* $rollback_target\\n*Build:* <\${BUILDKITE_BUILD_URL:-#}|#\${BUILDKITE_BUILD_NUMBER:-unknown}>\\n*Pipeline:* \${BUILDKITE_PIPELINE_SLUG:-unknown}\\n*Branch:* \${BUILDKITE_BRANCH:-unknown}\\n\\nManual investigation required. Check logs for details."
-NOTIFICATION_EOF
-            buildkite-agent pipeline upload /tmp/rollback-failed-notification.yml || echo "Failed to send notification"
-            rm -f /tmp/rollback-failed-notification.yml
             
             exit 1
           fi
