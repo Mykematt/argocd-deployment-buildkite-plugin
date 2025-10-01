@@ -10,8 +10,11 @@ create_notification_template() {
     local to_label="$5"
     local to_value="$6"
     local footer="$7"
+    local operation_header="$8"
     
-    local message="*Application:* \`$app_name\`
+    local message="$operation_header
+
+*Application:* \`$app_name\`
 *Status:* $status
 *$from_label Revision:* \`$from_value\`
 *$to_label Revision:* \`$to_value\`
@@ -47,57 +50,57 @@ send_notification() {
         
         # Create notification message and determine header
         local notification_message
-        local notification_label
         local status
         local from_label
         local to_label
         local footer
         
+        local operation_header
         case "$notification_type" in
             "deployment_success")
-                notification_label=":rocket: ArgoCD Deployment"
+                operation_header="🚀 *ArgoCD Deployment Success*"
                 status="Deployment successful"
                 from_label="Previous"
                 to_label="Current"
                 footer="Deployment completed successfully and application is healthy."
                 ;;
             "deployment_failed_auto")
-                notification_label=":x: ArgoCD Deployment"
+                operation_header="❌ *ArgoCD Deployment Failed*"
                 status="Deployment failed - Auto rollback in progress"
                 from_label="Current"
                 to_label="Target"
                 footer="Automatic rollback initiated..."
                 ;;
             "deployment_failed_manual")
-                notification_label=":x: ArgoCD Deployment"
+                operation_header="❌ *ArgoCD Deployment Failed*"
                 status="Deployment failed - Manual decision required"
                 from_label="Current"
                 to_label="Target"
                 footer="Manual rollback decision required on pipeline."
                 ;;
             "rollback_success_auto")
-                notification_label=":arrows_counterclockwise: ArgoCD Rollback"
+                operation_header="🔄 *ArgoCD Rollback Success*"
                 status="Auto rollback successful"
                 from_label="From"
                 to_label="To"
                 footer=""
                 ;;
             "rollback_success_manual")
-                notification_label=":arrows_counterclockwise: ArgoCD Rollback"
+                operation_header="🔄 *ArgoCD Rollback Success*"
                 status="Manual rollback successful"
                 from_label="From"
                 to_label="To"
                 footer=""
                 ;;
             "rollback_failed_auto")
-                notification_label=":x: ArgoCD Rollback"
+                operation_header="❌ *ArgoCD Rollback Failed*"
                 status="Auto rollback failed"
                 from_label="From"
                 to_label="Target"
                 footer="Manual investigation required. Check logs for details."
                 ;;
             "rollback_failed_manual")
-                notification_label=":x: ArgoCD Rollback"
+                operation_header="❌ *ArgoCD Rollback Failed*"
                 status="Manual rollback failed"
                 from_label="From"
                 to_label="Target"
@@ -105,7 +108,7 @@ send_notification() {
                 ;;
         esac
         
-        notification_message=$(create_notification_template "$app_name" "$status" "$from_label" "$from_revision" "$to_label" "$to_revision" "$footer")
+        notification_message=$(create_notification_template "$app_name" "$status" "$from_label" "$from_revision" "$to_label" "$to_revision" "$footer" "$operation_header")
         
         # Escape the message for YAML (replace newlines with \n)
         local escaped_message
@@ -115,7 +118,7 @@ send_notification() {
         local notification_pipeline
         notification_pipeline=$(cat <<-EOF
 steps:
-  - label: "$notification_label"
+  - label: ":slack: ArgoCD Plugin Notification"
     command: "echo 'Sending notification to Slack...'"
     notify:
       - slack:
