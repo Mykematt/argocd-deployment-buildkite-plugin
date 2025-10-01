@@ -57,7 +57,7 @@ execute_rollback() {
     {
         echo "=== Rollback Command Output ==="
         echo "Looking up history ID for revision: $target_revision"
-        argocd app history "$app_name" | head -21
+        argocd app history "$app_name" | head -11
     } >> "$log_file"
     
     # Use helper function to look up deployment history ID and execute rollback

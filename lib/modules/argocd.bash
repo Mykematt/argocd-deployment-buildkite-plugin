@@ -71,17 +71,17 @@ get_previous_deployment() {
     local previous_revision
     previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" "")
     
-    log_info "DEBUG: Metadata lookup result: '$previous_revision'"
+    log_debug "Metadata lookup result: '$previous_revision'"
     
     if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
         log_debug "Found previous revision in metadata: $previous_revision"
         
         # Validate that this revision still exists in ArgoCD history
         local history_output
-        history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -20)
+        history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2)
         
-        log_debug "DEBUG: Current ArgoCD history (first 5 lines):"
-        log_debug "$(echo "$history_output" | head -5)"
+        log_debug "Current ArgoCD history (first 10 lines):"
+        log_debug "$(echo "$history_output" | head -10)"
         
         if echo "$history_output" | grep -q "^$previous_revision "; then
             log_debug "Metadata revision $previous_revision validated in ArgoCD history - USING METADATA"
@@ -99,19 +99,19 @@ get_previous_deployment() {
     # Fallback: Get most recent entry from ArgoCD history (any previous deployment)
     log_debug "Querying ArgoCD history for $app_name"
     local history_output
-    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
+    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2)
     
     if [[ -z "$history_output" ]]; then
         log_warning "No deployment history available for $app_name"
         echo "unknown"
         return 1
     fi
-    log_info "DEBUG: Available ArgoCD history for rollback (first 5 entries):"
-    log_info "$(echo "$history_output" | head -5)"
+    log_info "Available ArgoCD history for rollback (first 10 entries):"
+    log_info "$(echo "$history_output" | head -10)"
     
     # Try to find the last successful deployment from our stored metadata
     local previous_history_id=""
-    log_info "DEBUG: Searching for successful deployments in metadata..."
+    log_debug "Searching for successful deployments in metadata..."
     while IFS= read -r line; do
         local history_id
         history_id=$(echo "$line" | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
@@ -119,9 +119,9 @@ get_previous_deployment() {
             # Check if this deployment was marked as successful in our metadata
             local deployment_result
             deployment_result=$(get_metadata "deployment:argocd:${app_name}:history_${history_id}:result" "")
-            log_debug "DEBUG: Checking history ID $history_id, metadata result: '$deployment_result'"
+            log_debug "Checking history ID $history_id, metadata result: '$deployment_result'"
             if [[ "$deployment_result" == "success" ]]; then
-                log_info "DEBUG: Found last successful deployment in history: $history_id - USING THIS"
+                log_info "Found successful deployment in history: $history_id"
                 previous_history_id="$history_id"
                 break
             fi
@@ -130,10 +130,10 @@ get_previous_deployment() {
     
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
-        log_info "DEBUG: No successful deployment found in metadata, using penultimate deployment from history"
+        log_info "Using penultimate deployment from history"
         # Skip the first entry (current/most recent) and get the second entry (penultimate)
         previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
-        log_info "DEBUG: Penultimate entry (NR==2): '$previous_history_id'"
+        log_info "Selected penultimate entry: '$previous_history_id'"
         
         # If second entry is empty, try third entry as fallback
         if [[ -z "$previous_history_id" ]]; then
@@ -141,12 +141,12 @@ get_previous_deployment() {
             log_debug "DEBUG: Third entry fallback (NR==3): '$previous_history_id'"
         fi
         
-        log_info "DEBUG: Final penultimate selection: '$previous_history_id'"
+        log_info "Final selection: '$previous_history_id'"
     fi
     
     if [[ -z "$previous_history_id" ]]; then
         log_warning "Could not find any valid deployment in history for $app_name"
-        log_debug "History format: $(echo "$history_output" | head -3)"
+        log_debug "History format: $(echo "$history_output" | head -10)"
         echo "unknown"
         return 1
     fi
@@ -159,8 +159,11 @@ get_previous_deployment() {
 lookup_deployment_history_id() {
     local app_name="$1"
     local target_revision="$2"
+    local verbose="${3:-false}"  # Optional verbose flag, defaults to false
     
-    log_debug "Looking up history ID for revision: $target_revision"
+    if [[ "$verbose" == "true" ]]; then
+        log_debug "Looking up history ID for revision: $target_revision"
+    fi
     
     # If it's already a history ID (numeric), return it
     if [[ "$target_revision" =~ ^[0-9]+$ ]]; then
@@ -171,10 +174,12 @@ lookup_deployment_history_id() {
     
     # Look up in ArgoCD history
     local history_output
-    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -10)
+    history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2)
     
     if [[ -z "$history_output" ]]; then
-        log_error "No deployment history available for $app_name"
+        if [[ "$verbose" == "true" ]]; then
+            log_error "No deployment history available for $app_name"
+        fi
         return 1
     fi
     
@@ -185,13 +190,17 @@ lookup_deployment_history_id() {
     ' | grep -E '^[0-9]+$' || echo "")
     
     if [[ -z "$history_id" ]]; then
-        log_error "Could not find history ID for revision: $target_revision"
-        echo "ℹ️  Available history:" >&2
-        echo "$history_output" >&2
+        if [[ "$verbose" == "true" ]]; then
+            log_error "Could not find history ID for revision: $target_revision"
+            echo "ℹ️  Available history:" >&2
+            echo "$history_output" >&2
+        fi
         return 1
     fi
     
-    log_debug "Found history ID: $history_id for revision: $target_revision"
+    if [[ "$verbose" == "true" ]]; then
+        log_debug "Found history ID: $history_id for revision: $target_revision"
+    fi
     echo "$history_id"
 }
 
