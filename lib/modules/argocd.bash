@@ -108,14 +108,15 @@ get_previous_deployment() {
         fi
     done <<< "$history_output"
     
-    # If no successful deployment found in metadata, fall back to most recent entries
+    # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
-        log_debug "No successful deployment found in metadata, using most recent from history"
-        previous_history_id=$(echo "$history_output" | awk 'NR==1 {print $1}' | grep -E '^[0-9]+$' || echo "")
+        log_debug "No successful deployment found in metadata, using penultimate deployment from history"
+        # Skip the first entry (current/most recent) and get the second entry (penultimate)
+        previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
         
-        # If first entry is empty, try second entry
+        # If second entry is empty, try third entry as fallback
         if [[ -z "$previous_history_id" ]]; then
-            previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+            previous_history_id=$(echo "$history_output" | awk 'NR==3 {print $1}' | grep -E '^[0-9]+$' || echo "")
         fi
     fi
     
