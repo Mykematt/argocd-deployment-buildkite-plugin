@@ -55,6 +55,7 @@ get_stable_deployment() {
     
     # Convert Git SHA to History ID using ArgoCD history
     local history_id
+    history_id=$(lookup_deployment_history_id "$app_name" "$current_revision" 2>/dev/null || echo "unknown")
     
     log_debug "Current stable deployment: $history_id (revision: $current_revision)"
     echo "$history_id"
