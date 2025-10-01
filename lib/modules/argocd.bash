@@ -106,8 +106,8 @@ get_previous_deployment() {
         echo "unknown"
         return 1
     fi
-    log_debug "Available ArgoCD history for rollback:"
-    log_debug "$(echo "$history_output" | head -3)"
+    log_info "DEBUG: Available ArgoCD history for rollback (first 5 entries):"
+    log_info "$(echo "$history_output" | head -5)"
     
     # Try to find the last successful deployment from our stored metadata
     local previous_history_id=""
@@ -133,7 +133,7 @@ get_previous_deployment() {
         log_info "DEBUG: No successful deployment found in metadata, using penultimate deployment from history"
         # Skip the first entry (current/most recent) and get the second entry (penultimate)
         previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
-        log_debug "DEBUG: Penultimate entry (NR==2): '$previous_history_id'"
+        log_info "DEBUG: Penultimate entry (NR==2): '$previous_history_id'"
         
         # If second entry is empty, try third entry as fallback
         if [[ -z "$previous_history_id" ]]; then
@@ -141,7 +141,7 @@ get_previous_deployment() {
             log_debug "DEBUG: Third entry fallback (NR==3): '$previous_history_id'"
         fi
         
-        log_debug "DEBUG: Final penultimate selection: '$previous_history_id'"
+        log_info "DEBUG: Final penultimate selection: '$previous_history_id'"
     fi
     
     if [[ -z "$previous_history_id" ]]; then
