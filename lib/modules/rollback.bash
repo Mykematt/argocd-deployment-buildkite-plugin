@@ -251,9 +251,6 @@ inject_rollback_decision_block() {
     
     log_success "Pre-computed rollback: target=$rollback_target, history_id=$history_id"
     
-    # Debug: Log all variables before YAML generation
-    log_info "DEBUG: YAML variables - app_name='$app_name', rollback_target='$rollback_target', history_id='$history_id', timeout='$timeout', timestamp='$timestamp'"
-    
     # Create a temporary file for the pipeline YAML
     local pipeline_file
     pipeline_file=$(create_temp_file "rollback-pipeline")
