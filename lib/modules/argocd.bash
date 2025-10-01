@@ -107,7 +107,6 @@ get_previous_deployment() {
         return 1
     fi
     log_info "Available ArgoCD history for rollback (first 10 entries):"
-    log_info "ID      DATE                           REVISION"
     log_info "$(echo "$history_output" | head -10)"
     
     # Try to find the last successful deployment from our stored metadata
@@ -133,14 +132,14 @@ get_previous_deployment() {
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
         log_info "Using previous deployment from filtered history"
-        # Get the second-to-last entry to avoid selecting current faulty deployment
-        previous_history_id=$(echo "$history_output" | tail -2 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+        # Get the third-to-last entry since current deploymen might not be in history yet
+        previous_history_id=$(echo "$history_output" | tail -3 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
         log_info "Selected previous deployment: '$previous_history_id'"
         
-        # If second-to-last entry is empty, try third-to-last entry as fallback
+        # If third-to-last entry is empty, try fourth-to-last entry as fallback
         if [[ -z "$previous_history_id" ]]; then
-            previous_history_id=$(echo "$history_output" | tail -3 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
-            log_debug "Third-to-last entry fallback: '$previous_history_id'"
+            previous_history_id=$(echo "$history_output" | tail -4 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+            log_debug "Fourth-to-last entry fallback: '$previous_history_id'"
         fi
         
         log_info "Final selection: '$previous_history_id'"
