@@ -320,14 +320,45 @@ steps:
         if argocd app rollback "$app_name" "$history_id" --timeout "$timeout"; then
           rollback_exit_code=0
           echo "Debug: rollback_exit_code=0"
-          echo "Rollback completed successfully"
+          echo "Rollback command completed successfully"
           
-          # Create success annotation
-          printf "**Manual Rollback Successful**\n\n**Application:** %s\n\n**Rolled back to:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nThe application has been restored to the previous stable version." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "success" --context "manual-rollback-$app_name" || true
+          # Wait for rollback to complete and sync
+          echo "🔄 Waiting for rollback to complete and sync..."
+          if argocd app wait "$app_name" --timeout "$timeout" --health; then
+            echo "✅ Rollback sync completed successfully"
             
-          # Update metadata
-          buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_success"
-          buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
+            # Create success annotation
+            printf "**Manual Rollback Successful**\n\n**Application:** %s\n\n**Rolled back to:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nThe application has been restored to the previous stable version." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "success" --context "manual-rollback-$app_name" || true
+              
+            # Update metadata
+            buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_success"
+            buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rolled_back"
+            
+            # Send rollback success notification
+            echo "📱 Sending rollback success notification..."
+            # Source the plugin functions to access send_notification
+            source "\$BUILDKITE_PLUGIN_PATH/lib/shared.bash"
+            source "\$BUILDKITE_PLUGIN_PATH/lib/modules/notifications.bash"
+            send_notification "$app_name" "rollback_success_manual" "$rollback_target" "$rollback_target"
+            
+          else
+            echo "❌ Rollback wait failed - application did not become healthy"
+            
+            # Create failure annotation for wait failure
+            printf "**Manual Rollback Wait Failed**\n\n**Application:** %s\n\n**Target:** %s\n\n**History ID:** %s\n\n**Timestamp:** %s\n\nRollback command succeeded but application did not become healthy. Manual investigation required." "$app_name" "$rollback_target" "$history_id" "$timestamp" | buildkite-agent annotate --style "error" --context "manual-rollback-wait-failed-$app_name" || true
+              
+            # Update metadata
+            buildkite-agent meta-data set "deployment:argocd:$app_name:result" "rollback_failed"
+            buildkite-agent meta-data set "deployment:argocd:$app_name:status" "rollback_failed"
+            
+            # Send rollback failure notification
+            echo "📱 Sending rollback failure notification..."
+            source "\$BUILDKITE_PLUGIN_PATH/lib/shared.bash"
+            source "\$BUILDKITE_PLUGIN_PATH/lib/modules/notifications.bash"
+            send_notification "$app_name" "rollback_failed_manual" "$rollback_target" "$rollback_target"
+            
+            exit 1
+          fi
           
         else
           rollback_exit_code=1

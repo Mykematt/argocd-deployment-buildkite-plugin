@@ -67,14 +67,25 @@ get_previous_deployment() {
     
     log_debug "Getting previous stable deployment for $app_name"
     
-    # Try to get from stored metadata first
+    # Try to get from stored metadata first, but validate it exists in current history
     local previous_revision
     previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" "")
     
     if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
         log_debug "Found previous revision in metadata: $previous_revision"
-        echo "$previous_revision"
-        return 0
+        
+        # Validate that this revision still exists in ArgoCD history
+        local history_output
+        history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -20)
+        
+        if echo "$history_output" | grep -q "^$previous_revision "; then
+            log_debug "Metadata revision $previous_revision validated in ArgoCD history"
+            echo "$previous_revision"
+            return 0
+        else
+            log_warning "Metadata revision $previous_revision not found in current ArgoCD history - using fresh history"
+            # Fall through to ArgoCD history lookup
+        fi
     fi
     
     # Fallback: Get most recent entry from ArgoCD history (any previous deployment)
