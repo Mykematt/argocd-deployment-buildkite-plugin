@@ -69,6 +69,31 @@ steps:
 - 🎯 **Smart Rollback Logic**: Temporarily disables auto-sync during rollbacks to prevent conflicts
 - 📊 **Comprehensive Annotations**: Beautiful success/failure annotations with detailed information
 
+## Workflow
+
+### Deploy Mode
+
+1. **Validation**: Plugin validates ArgoCD connectivity and application existence
+2. **Pre-deployment**: Captures current application state and revision for rollback
+3. **Deployment**: Executes ArgoCD sync operation
+   - **Auto mode**: Completes full health check cycle, then automatic rollback to a previous deployment on failure
+   - **Manual mode**: Fails immediately on first health check failure to save time, then interactive block step
+4. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
+5. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
+6. **Notifications**: Sends Slack notifications on rollback events
+7. **Annotations**: Creates beautiful success/failure annotations with detailed information
+
+### Rollback Mode
+
+1. **Validation**: Plugin validates ArgoCD connectivity and target revision
+2. **Rollback Execution**:
+   - **Auto mode**: Executes ArgoCD rollback to a previous deployment if auto mode is used
+   - **Manual mode**: Executes ArgoCD rollback to specified revision if manual mode is used
+3. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
+4. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
+5. **Notifications**: Sends Slack notifications on rollback events
+6. **Annotations**: Creates beautiful success/failure annotations with detailed information
+
 ## Configuration Options
 
 ### Required
@@ -103,7 +128,12 @@ Timeout in seconds for ArgoCD operations. Defaults to `300`. Must be between 30 
 
 #### `argocd_server` (string)
 
-ArgoCD server URL. Can also be set via `ARGOCD_SERVER` environment variable.
+ArgoCD server URL. Can also be set via `ARGOCD_SERVER` environment variable. Supports:
+
+- Full URL: `https://argocd.example.com`
+- ELB DNS name: `a84b3c9fe815e4047a19a04966cc5ff1-2002834036.us-east-1.elb.amazonaws.com:443`
+- ELB IP address: `52.206.16.12:443`
+- Kubernetes service: `argocd-server.argocd.svc.cluster.local:443`
 
 #### `argocd_username` (string)
 
@@ -145,7 +175,7 @@ Slack channel, username, or user ID for notifications using Buildkite's native S
 
 - Channel names: `#deployments`, `#alerts`
 - Usernames: `@username`, `@devops-team`
-- User IDs: `U123ABC456` (found via User > More options > Copy member ID)
+- User IDs: `U123ABC456`
 
 ## Usage Patterns
 
@@ -209,55 +239,20 @@ steps:
           argocd_server: "https://argocd.example.com"
           argocd_username: "admin"
           mode: "rollback"
-          target_revision: "370"  # Recent ArgoCD History ID (check: argocd app history <app-name>)
+          rollback_mode: "manual"
+          target_revision: "370"  # Recent ArgoCD History ID 
           collect_logs: true
           upload_artifacts: true
 ```
 
 ## Compatibility
 
-| Elastic Stack | Agent Stack K8s | Hosted (Mac) | Hosted (Linux) | Notes |
-| :-----------: | :-------------: | :----: | :----: |:---- |
-| ✅ | ✅ | ⚠️ | ✅ | Requires ArgoCD CLI setup |
+| Elastic Stack | Agent Stack K8s | Local Agents (Mac/Linux) | Hosted Agents |
+| :-----------: | :-------------: | :----: | :----: |
+| ✅ | ✅ | ✅ | ⚠️ |
 
-- ✅ Fully supported (all combinations of attributes have been tested to pass)
-- ⚠️ Partially supported (some combinations cause errors/issues)
-- ❌ Not supported
-
-## Workflow
-
-### Deploy Mode
-
-1. **Validation**: Plugin validates ArgoCD connectivity and application existence
-2. **Pre-deployment**: Captures current application state and revision for rollback
-3. **Deployment**: Executes ArgoCD sync operation
-4. **Health Monitoring**: Monitors application health via ArgoCD API (always enabled)
-   - **Auto mode**: Completes full health check cycle, then automatic rollback on failure
-   - **Manual mode**: Fails immediately on first failure to save time, then interactive block step
-5. **Failure Handling**:
-   - **Auto mode**: Automatic rollback to previous stable version with smart rollback logic (auto-sync management)
-   - **Manual mode**: Interactive block step for user decision
-6. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
-7. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
-8. **Notifications**: Sends Slack notifications on rollback events
-9. **Annotations**: Creates beautiful success/failure annotations with detailed information
-
-### Rollback Mode
-
-1. **Validation**: Plugin validates ArgoCD connectivity and target revision
-2. **Rollback Execution**: Executes ArgoCD rollback to specified revision
-3. **Log Collection**: Collects ArgoCD app logs and pod logs (if enabled)
-4. **Artifact Upload**: Uploads logs and deployment artifacts to Buildkite
-5. **Notifications**: Sends Slack notifications on rollback events
-6. **Annotations**: Creates beautiful success/failure annotations with detailed information
-
-## 👩‍💻 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- ✅ **Fully supported** - Tested and verified
+- ⚠️ **Requires setup** - ArgoCD CLI must be pre-installed
 
 ## Developing
 
