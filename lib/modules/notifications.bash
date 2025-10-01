@@ -112,7 +112,7 @@ send_notification() {
         
         # Escape the message for YAML (replace newlines with \n) - Cross-platform compatible
         local escaped_message
-        escaped_message=$(echo "$notification_message" | tr '\n' '\001' | sed 's/\001/\\n/g')
+        escaped_message=$(printf '%s' "$notification_message" | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
         
         # Inject notification step using Buildkite's native Slack integration
         local notification_pipeline
