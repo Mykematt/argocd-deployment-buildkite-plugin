@@ -132,14 +132,14 @@ get_previous_deployment() {
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
         log_info "Using previous deployment from filtered history"
-        # Get the last entry (most recent in history, which should be previous deployment)
-        previous_history_id=$(echo "$history_output" | tail -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+        # Get the second-to-last entry (previous deployment, not current)
+        previous_history_id=$(echo "$history_output" | tail -2 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
         log_info "Selected previous deployment: '$previous_history_id'"
         
-        # If last entry is empty, try second-to-last entry as fallback
+        # If second-to-last entry is empty, try third-to-last entry as fallback
         if [[ -z "$previous_history_id" ]]; then
-            previous_history_id=$(echo "$history_output" | tail -2 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
-            log_debug "Second-to-last entry fallback: '$previous_history_id'"
+            previous_history_id=$(echo "$history_output" | tail -3 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+            log_debug "Third-to-last entry fallback: '$previous_history_id'"
         fi
         
         log_info "Final selection: '$previous_history_id'"
@@ -168,9 +168,11 @@ lookup_deployment_history_id() {
     
     # If it's already a history ID (numeric), return it
     if [[ "$target_revision" =~ ^[0-9]+$ ]]; then
-        log_debug "Target revision is already a history ID: $target_revision"
+        log_info "Target revision is already a history ID: $target_revision"
         echo "$target_revision"
         return 0
+    else
+        log_info "Target revision '$target_revision' is not numeric, searching in history"
     fi
     
     # Look up in ArgoCD history

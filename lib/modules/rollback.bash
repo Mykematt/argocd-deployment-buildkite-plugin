@@ -229,7 +229,13 @@ inject_rollback_decision_block() {
     # Get the ArgoCD history ID NOW while we have plugin functions
     local history_id=""
     if [[ "$rollback_target" != "unknown" ]]; then
-        history_id=$(lookup_deployment_history_id "$app_name" "$rollback_target" || echo "")
+        if [[ "$rollback_target" =~ ^[0-9]+$ ]]; then
+            # Already a history ID, use it directly
+            history_id="$rollback_target"
+        else
+            # Need to look up Git SHA in history
+            history_id=$(lookup_deployment_history_id "$app_name" "$rollback_target" || echo "")
+        fi
     fi
     
     # Get connection details NOW
