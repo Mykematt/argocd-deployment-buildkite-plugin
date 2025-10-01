@@ -117,7 +117,6 @@ get_previous_deployment() {
         history_id=$(echo "$line" | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
         if [[ -n "$history_id" ]]; then
             # Check if this deployment was marked as successful in our metadata
-{{ ... }}
             local deployment_result
             deployment_result=$(get_metadata "deployment:argocd:${app_name}:history_${history_id}:result" "")
             log_debug "DEBUG: Checking history ID $history_id, metadata result: '$deployment_result'"
