@@ -107,11 +107,13 @@ get_previous_deployment() {
         return 1
     fi
     log_info "Available ArgoCD history for rollback (first 10 entries):"
+    log_info "ID      DATE                           REVISION"
     log_info "$(echo "$history_output" | head -10)"
     
     # Try to find the last successful deployment from our stored metadata
+    # Process history in reverse order (newest to oldest) to find most recent success
     local previous_history_id=""
-    log_debug "Searching for successful deployments in metadata..."
+    log_debug "Searching for successful deployments in metadata (newest first)..."
     while IFS= read -r line; do
         local history_id
         history_id=$(echo "$line" | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
@@ -126,19 +128,19 @@ get_previous_deployment() {
                 break
             fi
         fi
-    done <<< "$history_output"
+    done <<< "$(echo "$history_output" | tac)"
     
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
-        log_info "Using penultimate deployment from history"
-        # Skip the first entry (current/most recent) and get the second entry (penultimate)
-        previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
-        log_info "Selected penultimate entry: '$previous_history_id'"
+        log_info "Using previous deployment from filtered history"
+        # Get the second-to-last entry to avoid selecting current faulty deployment
+        previous_history_id=$(echo "$history_output" | tail -2 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+        log_info "Selected previous deployment: '$previous_history_id'"
         
-        # If second entry is empty, try third entry as fallback
+        # If second-to-last entry is empty, try third-to-last entry as fallback
         if [[ -z "$previous_history_id" ]]; then
-            previous_history_id=$(echo "$history_output" | awk 'NR==3 {print $1}' | grep -E '^[0-9]+$' || echo "")
-            log_debug "DEBUG: Third entry fallback (NR==3): '$previous_history_id'"
+            previous_history_id=$(echo "$history_output" | tail -3 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+            log_debug "Third-to-last entry fallback: '$previous_history_id'"
         fi
         
         log_info "Final selection: '$previous_history_id'"
