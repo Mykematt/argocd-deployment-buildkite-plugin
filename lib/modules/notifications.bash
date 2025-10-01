@@ -1,16 +1,42 @@
 #!/bin/bash
-# notifications.bash - Notification functions for Slack and other integrations
+# notifications.bash - Notification and annotation functions for ArgoCD operations
 
-
-# Send rollback notification (fixed: removed recursive call to prevent infinite loops)
-send_rollback_notification() {
+# Create standardized notification message template
+create_notification_template() {
     local app_name="$1"
-    local from_revision="$2"
-    local to_revision="$3"
-    local reason="$4"
+    local status="$2"
+    local from_label="$3"
+    local from_value="$4"
+    local to_label="$5"
+    local to_value="$6"
+    local footer="$7"
     
-    log_info "Preparing rollback notification for $app_name"
-    log_debug "Notification details: from=$from_revision, to=$to_revision, reason=$reason"
+    local message="*Application:* \`$app_name\`
+*Status:* $status
+*$from_label Revision:* \`$from_value\`
+*$to_label Revision:* \`$to_value\`
+*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
+*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
+*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`"
+    
+    if [[ -n "$footer" ]]; then
+        message="$message
+
+$footer"
+    fi
+    
+    echo "$message"
+}
+
+# Unified notification system for all ArgoCD operations
+send_notification() {
+    local app_name="$1"
+    local notification_type="$2"
+    local from_revision="$3"
+    local to_revision="$4"
+    
+    log_info "Preparing $notification_type notification for $app_name"
+    log_debug "Notification details: type=$notification_type, from=$from_revision, to=$to_revision"
     
     local slack_channel
     slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
@@ -19,77 +45,73 @@ send_rollback_notification() {
     if [[ -n "$slack_channel" ]]; then
         log_info "Sending Slack notification to $slack_channel..."
         
-        # Create notification message based on reason
+        # Create notification message and determine header
         local notification_message
-        case "$reason" in
-            "rollback_success")
-                notification_message="✅ *ArgoCD Rollback Successful*
-
-*Application:* \`$app_name\`
-*From Revision:* \`$from_revision\`
-*To Revision:* \`$to_revision\`
-*Status:* Rollback completed successfully
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`"
+        local notification_label
+        local status
+        local from_label
+        local to_label
+        local footer
+        
+        case "$notification_type" in
+            "deployment_success")
+                notification_label=":rocket: ArgoCD Deployment Passed"
+                status="Deployment successful"
+                from_label="Previous"
+                to_label="Current"
+                footer="Deployment completed successfully and application is healthy."
                 ;;
-            "rollback_failed")
-                notification_message="❌ *ArgoCD Rollback Failed*
-
-*Application:* \`$app_name\`
-*From Revision:* \`$from_revision\`
-*Target Revision:* \`$to_revision\`
-*Status:* Rollback operation failed
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
-
-Manual investigation may be required."
+            "deployment_failed_auto")
+                notification_label=":x: ArgoCD Deployment Failed"
+                status="Deployment failed - Auto rollback in progress"
+                from_label="Current"
+                to_label="Target"
+                footer="Automatic rollback initiated..."
                 ;;
-            "health_check_failed")
-                notification_message="🚨 *ArgoCD Deployment Health Check Failed*
-
-*Application:* \`$app_name\`
-*Reason:* Health check failed after deployment
-*Current Revision:* \`$from_revision\`
-*Available Rollback Target:* \`$to_revision\`
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
-
-Manual rollback decision required."
+            "deployment_failed_manual")
+                notification_label=":x: ArgoCD Deployment Failed"
+                status="Deployment failed - Manual decision required"
+                from_label="Current"
+                to_label="Target"
+                footer="Manual rollback decision required on pipeline."
                 ;;
-            "deployment_failed")
-                notification_message="🚨 *ArgoCD Deployment Failed*
-
-*Application:* \`$app_name\`
-*Reason:* Deployment sync operation failed
-*Current Revision:* \`$from_revision\`
-*Available Rollback Target:* \`$to_revision\`
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`
-
-Manual rollback decision required."
+            "rollback_success_auto")
+                notification_label=":arrows_counterclockwise: ArgoCD Rollback Passed"
+                status="Auto rollback successful"
+                from_label="From"
+                to_label="To"
+                footer=""
                 ;;
-            *)
-                notification_message="🚨 *ArgoCD Rollback Alert*
-
-*Application:* \`$app_name\`
-*Reason:* $reason
-*From Revision:* \`$from_revision\`
-*To Revision:* \`$to_revision\`
-*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>
-*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`
-*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`"
+            "rollback_success_manual")
+                notification_label=":arrows_counterclockwise: ArgoCD Rollback Passed"
+                status="Manual rollback successful"
+                from_label="From"
+                to_label="To"
+                footer=""
+                ;;
+            "rollback_failed_auto")
+                notification_label=":x: ArgoCD Rollback Failed"
+                status="Auto rollback failed"
+                from_label="From"
+                to_label="Target"
+                footer="Manual investigation required. Check logs for details."
+                ;;
+            "rollback_failed_manual")
+                notification_label=":x: ArgoCD Rollback Failed"
+                status="Manual rollback failed"
+                from_label="From"
+                to_label="Target"
+                footer="Manual investigation required. Check logs for details."
                 ;;
         esac
+        
+        notification_message=$(create_notification_template "$app_name" "$status" "$from_label" "$from_revision" "$to_label" "$to_revision" "$footer")
         
         # Inject notification step using Buildkite's native Slack integration
         local notification_pipeline
         notification_pipeline=$(cat <<-EOF
 steps:
-  - label: ":slack: ArgoCD Notification"
+  - label: "$notification_label"
     command: "echo 'Sending notification to Slack...'"
     notify:
       - slack:
@@ -199,48 +221,40 @@ The application has been successfully rolled back to the previous stable version
     fi
 }
 
-# Send deployment success notification
+# Legacy wrapper for deployment success notifications (for backward compatibility)
 send_deployment_success_notification() {
     local app_name="$1"
     local previous_version="$2"
     local current_version="$3"
     
-    log_info "Sending deployment success notification for $app_name"
+    send_notification "$app_name" "deployment_success" "$previous_version" "$current_version"
+}
+
+# Legacy wrapper for rollback notifications (for backward compatibility)
+send_rollback_notification() {
+    local app_name="$1"
+    local from_revision="$2"
+    local to_revision="$3"
+    local reason="$4"
     
-    local slack_channel
-    slack_channel=$(plugin_read_config NOTIFICATIONS_SLACK_CHANNEL "")
-    
-    if [[ -n "$slack_channel" ]]; then
-        local notification_message="🚀 *ArgoCD Deployment*\n\n*Application:* \`$app_name\`\n*Previous Version:* \`$previous_version\`\n*Current Version:* \`$current_version\`\n*Build:* <${BUILDKITE_BUILD_URL:-#}|#${BUILDKITE_BUILD_NUMBER:-unknown}>\n*Pipeline:* \`${BUILDKITE_PIPELINE_SLUG:-unknown}\`\n*Branch:* \`${BUILDKITE_BRANCH:-unknown}\`\n\nDeployment completed successfully and application is healthy."
-        
-        # Create and upload notification pipeline  
-        local notification_pipeline
-        notification_pipeline=$(cat <<EOF
-steps:
-  - label: ":slack: ArgoCD Deployment"
-    command: "echo 'Sending success notification to Slack...'"
-    notify:
-      - slack:
-          channels:
-            - "$slack_channel"
-          message: "$notification_message"
-EOF
-        )
-        
-        local pipeline_file
-        pipeline_file=$(create_temp_file "success-notification")
-        echo "$notification_pipeline" > "$pipeline_file"
-        
-        if buildkite-agent pipeline upload "$pipeline_file" >/dev/null 2>&1; then
-            log_success "Success notification sent to $slack_channel"
-        else
-            log_warning "Failed to send success notification"
-        fi
-        
-        rm -f "$pipeline_file"
-    else
-        log_debug "No Slack channel configured for success notifications"
-    fi
+    # Map old reason codes to new notification types
+    case "$reason" in
+        "deployment_failed_auto_rollback")
+            send_notification "$app_name" "deployment_failed_auto" "$from_revision" "$to_revision"
+            ;;
+        "auto_rollback_success")
+            send_notification "$app_name" "rollback_success_auto" "$from_revision" "$to_revision"
+            ;;
+        "deployment_failed_manual")
+            send_notification "$app_name" "deployment_failed_manual" "$from_revision" "$to_revision"
+            ;;
+        "manual_rollback_success")
+            send_notification "$app_name" "rollback_success_manual" "$from_revision" "$to_revision"
+            ;;
+        *)
+            log_warning "Unknown notification reason: $reason"
+            ;;
+    esac
 }
 
 # Validate notification configuration

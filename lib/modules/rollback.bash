@@ -115,11 +115,15 @@ execute_rollback() {
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
         # Send success notification (avoid recursive calls)
-        send_rollback_notification "$app_name" "$stable_revision" "$target_revision" "rollback_success"
+        if [[ "$rollback_type" == "automatic" ]]; then
+            send_notification "$app_name" "rollback_success_auto" "$stable_revision" "$target_revision"
+        else
+            send_notification "$app_name" "rollback_success_manual" "$stable_revision" "$target_revision"
+        fi
         
         log_success "Rollback successful"
-        log_info "Failed:     $stable_revision"
-        log_info "Rolled to:  $target_revision"
+        log_info "Rolled from: $stable_revision"
+        log_info "Rolled to:   $target_revision"
     else
         # Update metadata with failure
         set_deployment_metadata "$app_name" "rollback_failed" "rollback_failed"
@@ -131,7 +135,11 @@ execute_rollback() {
         handle_log_collection_and_artifacts "$app_name" "$log_file"
         
         # Send failure notification (avoid recursive calls)
-        send_rollback_notification "$app_name" "$stable_revision" "$target_revision" "rollback_failed"
+        if [[ "$rollback_type" == "automatic" ]]; then
+            send_notification "$app_name" "rollback_failed_auto" "$stable_revision" "$target_revision"
+        else
+            send_notification "$app_name" "rollback_failed_manual" "$stable_revision" "$target_revision"
+        fi
         
         log_error "Rollback failed"
         exit 1
@@ -162,6 +170,9 @@ handle_deployment_failure() {
     # Handle rollback based on mode
     if [[ "$rollback_mode" == "auto" ]]; then
         log_info "Auto rollback mode: initiating automatic rollback..."
+        
+        # Send notification about deployment failure and auto rollback in progress
+        send_rollback_notification "$app_name" "current" "$previous_revision" "deployment_failed_auto_rollback"
         
         # If no previous revision available, try to get from ArgoCD history as fallback
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
