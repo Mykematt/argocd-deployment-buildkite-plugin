@@ -115,30 +115,6 @@ check_application_health() {
     esac
 }
 
-# Get detailed application health information
-get_application_health_details() {
-    local app_name="$1"
-    
-    log_debug "Getting detailed health information for $app_name"
-    
-    local health_info
-    health_info=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '
-        {
-            health: .status.health.status // "Unknown",
-            sync: .status.sync.status // "Unknown",
-            message: .status.health.message // "",
-            resources: [.status.resources[]? | select(.health) | {
-                kind: .kind,
-                name: .name,
-                health: .health.status,
-                message: .health.message // ""
-            }]
-        }
-    ' 2>/dev/null || echo '{"health":"Unknown","sync":"Unknown","message":"Failed to get status","resources":[]}')
-    
-    echo "$health_info"
-}
-
 # Check if application exists
 application_exists() {
     local app_name="$1"
@@ -154,32 +130,3 @@ application_exists() {
     fi
 }
 
-# Wait for application to reach a specific health state
-wait_for_health_state() {
-    local app_name="$1"
-    local expected_state="$2"
-    local timeout="${3:-300}"
-    
-    log_info "Waiting for $app_name to reach health state: $expected_state"
-    
-    local start_time
-    start_time=$(date +%s)
-    local end_time
-    end_time=$((start_time + timeout))
-    
-    while [[ $(date +%s) -lt $end_time ]]; do
-        local current_status
-        current_status=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.status.health.status // "Unknown"' 2>/dev/null || echo "Unknown")
-        
-        if [[ "$current_status" == "$expected_state" ]]; then
-            log_success "Application $app_name reached expected health state: $expected_state"
-            return 0
-        fi
-        
-        log_debug "Current health state: $current_status, waiting for: $expected_state"
-        sleep 10
-    done
-    
-    log_error "Timeout waiting for $app_name to reach health state: $expected_state"
-    return 1
-}

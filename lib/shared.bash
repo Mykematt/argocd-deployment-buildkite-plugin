@@ -1,5 +1,8 @@
 #!/bin/bash
-# shared.bash - Common utilities and logging functions for ArgoCD deployment plugin
+# shared.bash - Common utilities and functions for ArgoCD deployment plugin
+
+# Plugin configuration
+PLUGIN_PREFIX="ARGOCD_DEPLOYMENT"
 
 # Strict error handling
 set -euo pipefail
@@ -105,4 +108,12 @@ create_temp_file() {
 create_temp_dir() {
     local prefix="${1:-buildkite-plugin}"
     mktemp -d "/tmp/${prefix}-XXXXXX"
+}
+
+# Buildkite Plugin configuration reader
+# Reads plugin configuration values with fallback defaults
+plugin_read_config() {
+    local var="BUILDKITE_PLUGIN_${PLUGIN_PREFIX}_${1}"
+    local default="${2:-}"
+    echo "${!var:-$default}"
 }

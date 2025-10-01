@@ -42,23 +42,20 @@ validate_requirements() {
 get_stable_deployment() {
     local app_name="$1"
     
-    log_debug "Getting current stable deployment for $app_name"
+    log_debug "Getting current deployment for $app_name"
     
-    local current_revision
-    current_revision=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.status.operationState.syncResult.revision // .status.sync.revision // "unknown"' 2>/dev/null || echo "unknown")
+    # Get the most recent deployment from ArgoCD history (regardless of health status)
+    local current_history_id
+    current_history_id=$(argocd app history "$app_name" 2>/dev/null | tail -1 | awk '{print $1}' 2>/dev/null || echo "unknown")
     
-    if [[ "$current_revision" == "unknown" || -z "$current_revision" ]]; then
-        log_warning "Could not determine current revision for $app_name"
+    if [[ "$current_history_id" == "unknown" || -z "$current_history_id" || "$current_history_id" == "ID" ]]; then
+        log_warning "Could not determine current deployment for $app_name from history"
         echo "unknown"
         return 1
     fi
     
-    # Convert Git SHA to History ID using ArgoCD history
-    local history_id
-    history_id=$(lookup_deployment_history_id "$app_name" "$current_revision" 2>/dev/null || echo "unknown")
-    
-    log_debug "Current stable deployment: $history_id (revision: $current_revision)"
-    echo "$history_id"
+    log_debug "Current deployment: $current_history_id"
+    echo "$current_history_id"
 }
 
 # Get previous deployment from metadata or ArgoCD history
