@@ -51,32 +51,12 @@ collect_app_logs() {
         log_lines=1000
     fi
     
-    # Collect ArgoCD application logs
-    log_info "Collecting ArgoCD application logs (${log_lines} lines)..."
-    local app_log_file="$log_dir/argocd-app.log"
-    
-    {
-        echo "=== ArgoCD Application Logs ==="
-        echo "Application: $app_name"
-        echo "Lines: $log_lines"
-        echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-        echo "================================"
-        echo ""
-    } > "$app_log_file"
-    
-    if argocd app logs "$app_name" --tail "$log_lines" >> "$app_log_file" 2>&1; then
-        log_success "ArgoCD application logs collected"
-    else
-        log_warning "Failed to collect ArgoCD application logs"
-        echo "Failed to collect ArgoCD logs" >> "$app_log_file"
-    fi
-    
-    # Collect pod logs if possible
-    log_info "Collecting pod logs..."
+    # Collect pod logs via ArgoCD
+    log_info "Collecting pod logs via ArgoCD (${log_lines} lines)..." >&2
     local pod_log_file="$log_dir/pod-logs.log"
     
     {
-        echo "=== Pod Logs ==="
+        echo "=== Pod Logs (via ArgoCD) ==="
         echo "Application: $app_name"
         echo "Lines: $log_lines"
         echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -84,45 +64,21 @@ collect_app_logs() {
         echo ""
     } > "$pod_log_file"
     
-    # Get pods associated with the ArgoCD application
-    local app_namespace
-    app_namespace=$(argocd app get "$app_name" --output json 2>/dev/null | jq -r '.spec.destination.namespace // "default"' 2>/dev/null || echo "default")
-    
-    # Get application label selector
-    local label_selector
-    label_selector="app.kubernetes.io/instance=$app_name"
-    
-    if command_exists kubectl; then
-        log_debug "Collecting pod logs using kubectl"
-        
-        # Get pods with the application label
-        local pods
-        pods=$(kubectl get pods -n "$app_namespace" -l "$label_selector" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
-        
-        if [[ -n "$pods" ]]; then
-            for pod in $pods; do
-                echo "--- Pod: $pod ---" >> "$pod_log_file"
-                kubectl logs -n "$app_namespace" "$pod" --tail="$log_lines" >> "$pod_log_file" 2>&1 || echo "Failed to get logs for pod $pod" >> "$pod_log_file"
-                echo "" >> "$pod_log_file"
-            done
-            log_success "Pod logs collected for $app_name"
-        else
-            echo "No pods found for application $app_name in namespace $app_namespace" >> "$pod_log_file"
-            log_warning "No pods found for application $app_name"
-        fi
+    if argocd app logs "$app_name" --tail "$log_lines" >> "$pod_log_file" 2>&1; then
+        log_success "Pod logs collected via ArgoCD" >&2
     else
-        echo "kubectl not available - cannot collect pod logs" >> "$pod_log_file"
-        log_warning "kubectl not available - skipping pod log collection"
+        log_warning "Failed to collect pod logs" >&2
+        echo "Failed to collect pod logs" >> "$pod_log_file"
     fi
     
     # Collect ArgoCD application status
-    log_info "Collecting application status..."
+    log_info "Collecting application status..." >&2
     local status_file="$log_dir/app-status.json"
     
     if argocd app get "$app_name" --output json > "$status_file" 2>/dev/null; then
-        log_success "Application status collected"
+        log_success "Application status collected" >&2
     else
-        log_warning "Failed to collect application status"
+        log_warning "Failed to collect application status" >&2
         echo '{"error": "Failed to get application status"}' > "$status_file"
     fi
     
@@ -139,9 +95,10 @@ collect_app_logs() {
         echo "Total Size: $(du -sh "$log_dir" | cut -f1)"
     } > "$summary_file"
     
-    log_success "Log collection completed for $app_name"
-    log_info "Logs collected in: $log_dir"
+    log_success "Log collection completed for $app_name" >&2
+    log_debug "Logs collected in: $log_dir" >&2
     
+    # Only return the directory path, no other output
     echo "$log_dir"
 }
 
@@ -211,12 +168,6 @@ handle_log_collection_and_artifacts() {
         log_info "Log collection enabled, gathering ArgoCD application logs..."
         local log_dir
         log_dir=$(collect_app_logs "$app_name" "$log_lines")
-        
-        # Copy deployment log to the log directory
-        if [[ -f "$deployment_log_file" ]]; then
-            log_debug "Copying deployment log to log directory"
-            cp "$deployment_log_file" "$log_dir/"
-        fi
         
         if [[ "$upload_artifacts_enabled" == "true" ]]; then
             upload_artifacts "$log_dir" "$app_name"
