@@ -134,16 +134,7 @@ upload_artifacts() {
         # Clean up archive
         rm -f "$archive_path"
     else
-        log_warning "Failed to create archive, uploading individual files"
-    fi
-    
-    # Upload individual files as fallback or in addition to archive
-    log_info "Uploading individual log files..."
-    
-    if buildkite-agent artifact upload "$log_dir/*"; then
-        log_success "Individual log files uploaded successfully"
-    else
-        log_warning "Failed to upload some log files"
+        log_warning "Failed to create archive"
     fi
     
     log_success "Artifact upload completed for $app_name"
