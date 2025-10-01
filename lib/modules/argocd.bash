@@ -106,8 +106,7 @@ get_previous_deployment() {
         echo "unknown"
         return 1
     fi
-    log_info "Available ArgoCD history for rollback (first 10 entries):"
-    log_info "$(echo "$history_output" | head -10)"
+    log_debug "Available ArgoCD history entries: $(echo "$history_output" | wc -l) total"
     
     # Try to find the last successful deployment from our stored metadata
     # Process history in reverse order (newest to oldest) to find most recent success
@@ -122,7 +121,7 @@ get_previous_deployment() {
             deployment_result=$(get_metadata "deployment:argocd:${app_name}:history_${history_id}:result" "")
             log_debug "Checking history ID $history_id, metadata result: '$deployment_result'"
             if [[ "$deployment_result" == "success" ]]; then
-                log_info "Found successful deployment in history: $history_id"
+                log_debug "Found successful deployment in history: $history_id"
                 previous_history_id="$history_id"
                 break
             fi
@@ -131,18 +130,16 @@ get_previous_deployment() {
     
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
-        log_info "Using previous deployment from filtered history"
+        log_debug "Using previous deployment from filtered history"
         # Get the second-to-last entry (previous deployment, not current)
         previous_history_id=$(echo "$history_output" | tail -2 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
-        log_info "Selected previous deployment: '$previous_history_id'"
+        log_debug "Selected previous deployment: '$previous_history_id'"
         
         # If second-to-last entry is empty, try third-to-last entry as fallback
         if [[ -z "$previous_history_id" ]]; then
             previous_history_id=$(echo "$history_output" | tail -3 | head -1 | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
             log_debug "Third-to-last entry fallback: '$previous_history_id'"
         fi
-        
-        log_info "Final selection: '$previous_history_id'"
     fi
     
     if [[ -z "$previous_history_id" ]]; then

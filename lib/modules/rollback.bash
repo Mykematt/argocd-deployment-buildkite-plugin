@@ -167,6 +167,18 @@ handle_deployment_failure() {
     # Create failure annotation
     create_deployment_annotation "$app_name" "$previous_revision" "$previous_revision" "failed"
     
+    # If no previous revision available, try to get from ArgoCD history as fallback
+    if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
+        log_debug "No previous revision available, checking ArgoCD history as fallback..."
+        previous_revision=$(get_previous_deployment "$app_name" 2>/dev/null)
+    fi
+    
+    if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
+        log_error "No previous version available for rollback"
+        handle_log_collection_and_artifacts "$app_name" "$log_file"
+        exit 1
+    fi
+    
     # Handle rollback based on mode
     if [[ "$rollback_mode" == "auto" ]]; then
         log_info "Auto rollback mode: initiating automatic rollback..."
@@ -174,27 +186,10 @@ handle_deployment_failure() {
         # Send notification about deployment failure and auto rollback in progress
         send_notification "$app_name" "deployment_failed_auto" "current" "$previous_revision"
         
-        # If no previous revision available, try to get from ArgoCD history as fallback
-        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_debug "No previous revision available, checking ArgoCD history as fallback..."
-            previous_revision=$(get_previous_deployment "$app_name")
-        fi
-        
-        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_error "No previous version available for rollback"
-            handle_log_collection_and_artifacts "$app_name" "$log_file"
-            exit 1
-        fi
         execute_rollback "$app_name" "$previous_revision" "automatic" "$log_file"
     else
         # rollback_mode == "manual"
         log_info "Manual rollback mode: injecting block step for user decision..."
-        
-        # If no previous revision available, try to get from ArgoCD history as fallback
-        if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_debug "No previous revision available, checking ArgoCD history as fallback..."
-            previous_revision=$(get_previous_deployment "$app_name")
-        fi
         
         inject_rollback_decision_block "$app_name" "$previous_revision"
         
@@ -255,6 +250,9 @@ inject_rollback_decision_block() {
     fi
     
     log_success "Pre-computed rollback: target=$rollback_target, history_id=$history_id"
+    
+    # Debug: Log all variables before YAML generation
+    log_info "DEBUG: YAML variables - app_name='$app_name', rollback_target='$rollback_target', history_id='$history_id', timeout='$timeout', timestamp='$timestamp'"
     
     # Create a temporary file for the pipeline YAML
     local pipeline_file
