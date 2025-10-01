@@ -19,7 +19,7 @@ execute_rollback() {
     
     # Get current deployment for logging purposes
     local stable_revision
-    stable_revision=$(get_current_stable_deployment "$app_name")
+    stable_revision=$(get_stable_deployment "$app_name")
     
     if [[ -z "$target_revision" || "$target_revision" == "unknown" ]]; then
         log_error "No target revision available"
@@ -163,10 +163,10 @@ handle_deployment_failure() {
     if [[ "$rollback_mode" == "auto" ]]; then
         log_info "Auto rollback mode: initiating automatic rollback..."
         
-        # If no previous revision from metadata, try to get from ArgoCD history
+        # If no previous revision available, try to get from ArgoCD history as fallback
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_debug "No previous revision in metadata, checking ArgoCD history..."
-            previous_revision=$(get_previous_stable_deployment "$app_name")
+            log_debug "No previous revision available, checking ArgoCD history as fallback..."
+            previous_revision=$(get_previous_deployment "$app_name")
         fi
         
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
@@ -179,10 +179,10 @@ handle_deployment_failure() {
         # rollback_mode == "manual"
         log_info "Manual rollback mode: injecting block step for user decision..."
         
-        # If no previous revision from metadata, try to get from ArgoCD history
+        # If no previous revision available, try to get from ArgoCD history as fallback
         if [[ -z "$previous_revision" || "$previous_revision" == "unknown" ]]; then
-            log_debug "No previous revision in metadata, checking ArgoCD history for manual rollback..."
-            previous_revision=$(get_previous_stable_deployment "$app_name")
+            log_debug "No previous revision available, checking ArgoCD history as fallback..."
+            previous_revision=$(get_previous_deployment "$app_name")
         fi
         
         inject_rollback_decision_block "$app_name" "$previous_revision"
@@ -212,7 +212,7 @@ inject_rollback_decision_block() {
         rollback_target="$previous_revision"
     else
         # Get the current stable deployment that's actually running in the cluster
-        rollback_target=$(get_current_stable_deployment "$app_name")
+        rollback_target=$(get_stable_deployment "$app_name")
     fi
     
     # Get the ArgoCD history ID NOW while we have plugin functions

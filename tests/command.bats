@@ -52,6 +52,11 @@ case "$1" in
         echo "Rolled back successfully"
         exit 0
         ;;
+      "history")
+        # Return empty history to trigger "No deployment history available" error
+        # Just return empty output (no header, no data)
+        exit 0
+        ;;
       *) echo "app: $*" ;;
     esac
     ;;

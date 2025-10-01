@@ -39,7 +39,7 @@ validate_requirements() {
 }
 
 # Get current stable deployment (History ID format)
-get_current_stable_deployment() {
+get_stable_deployment() {
     local app_name="$1"
     
     log_debug "Getting current stable deployment for $app_name"
@@ -55,14 +55,13 @@ get_current_stable_deployment() {
     
     # Convert Git SHA to History ID using ArgoCD history
     local history_id
-    history_id=$(lookup_deployment_history_id "$app_name" "$current_revision" 2>/dev/null || echo "unknown")
     
     log_debug "Current stable deployment: $history_id (revision: $current_revision)"
     echo "$history_id"
 }
 
-# Get previous stable deployment from metadata or ArgoCD history
-get_previous_stable_deployment() {
+# Get previous deployment from metadata or ArgoCD history
+get_previous_deployment() {
     local app_name="$1"
     
     log_debug "Getting previous stable deployment for $app_name"
@@ -91,13 +90,32 @@ get_previous_stable_deployment() {
     log_debug "Available ArgoCD history for rollback:"
     log_debug "$(echo "$history_output" | head -3)"
     
-    # Get the most recent deployment from history (any available deployment)
-    local previous_history_id
-    previous_history_id=$(echo "$history_output" | awk 'NR==1 {print $1}' | grep -E '^[0-9]+$' || echo "")
+    # Try to find the last successful deployment from our stored metadata
+    local previous_history_id=""
+    while IFS= read -r line; do
+        local history_id
+        history_id=$(echo "$line" | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
+        if [[ -n "$history_id" ]]; then
+            # Check if this deployment was marked as successful in our metadata
+            local deployment_result
+            deployment_result=$(get_metadata "deployment:argocd:${app_name}:history_${history_id}:result" "")
+            if [[ "$deployment_result" == "success" ]]; then
+                log_debug "Found last successful deployment in history: $history_id"
+                previous_history_id="$history_id"
+                break
+            fi
+        fi
+    done <<< "$history_output"
     
-    # If first entry is empty, try second entry
+    # If no successful deployment found in metadata, fall back to most recent entries
     if [[ -z "$previous_history_id" ]]; then
-        previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+        log_debug "No successful deployment found in metadata, using most recent from history"
+        previous_history_id=$(echo "$history_output" | awk 'NR==1 {print $1}' | grep -E '^[0-9]+$' || echo "")
+        
+        # If first entry is empty, try second entry
+        if [[ -z "$previous_history_id" ]]; then
+            previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+        fi
     fi
     
     if [[ -z "$previous_history_id" ]]; then
