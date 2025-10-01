@@ -37,7 +37,7 @@ collect_app_logs() {
     local app_name="$1"
     local log_lines="${2:-1000}"
     
-    log_info "Collecting ArgoCD application logs for $app_name"
+    log_info "Collecting ArgoCD application logs for $app_name" >&2
     
     # Use mktemp -d for temporary directory creation
     local log_dir
