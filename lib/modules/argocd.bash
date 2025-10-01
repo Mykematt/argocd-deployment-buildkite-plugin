@@ -71,6 +71,8 @@ get_previous_deployment() {
     local previous_revision
     previous_revision=$(get_metadata "deployment:argocd:${app_name}:previous_version" "")
     
+    log_debug "DEBUG: Metadata lookup result: '$previous_revision'"
+    
     if [[ -n "$previous_revision" && "$previous_revision" != "unknown" ]]; then
         log_debug "Found previous revision in metadata: $previous_revision"
         
@@ -78,14 +80,20 @@ get_previous_deployment() {
         local history_output
         history_output=$(argocd app history "$app_name" 2>/dev/null | tail -n +2 | head -20)
         
+        log_debug "DEBUG: Current ArgoCD history (first 5 lines):"
+        log_debug "$(echo "$history_output" | head -5)"
+        
         if echo "$history_output" | grep -q "^$previous_revision "; then
-            log_debug "Metadata revision $previous_revision validated in ArgoCD history"
+            log_debug "Metadata revision $previous_revision validated in ArgoCD history - USING METADATA"
             echo "$previous_revision"
             return 0
         else
             log_warning "Metadata revision $previous_revision not found in current ArgoCD history - using fresh history"
+            log_debug "DEBUG: Falling through to ArgoCD history lookup"
             # Fall through to ArgoCD history lookup
         fi
+    else
+        log_debug "DEBUG: No valid metadata found, going to ArgoCD history lookup"
     fi
     
     # Fallback: Get most recent entry from ArgoCD history (any previous deployment)
@@ -104,6 +112,7 @@ get_previous_deployment() {
     
     # Try to find the last successful deployment from our stored metadata
     local previous_history_id=""
+    log_debug "DEBUG: Searching for successful deployments in metadata..."
     while IFS= read -r line; do
         local history_id
         history_id=$(echo "$line" | awk '{print $1}' | grep -E '^[0-9]+$' || echo "")
@@ -111,8 +120,9 @@ get_previous_deployment() {
             # Check if this deployment was marked as successful in our metadata
             local deployment_result
             deployment_result=$(get_metadata "deployment:argocd:${app_name}:history_${history_id}:result" "")
+            log_debug "DEBUG: Checking history ID $history_id, metadata result: '$deployment_result'"
             if [[ "$deployment_result" == "success" ]]; then
-                log_debug "Found last successful deployment in history: $history_id"
+                log_debug "Found last successful deployment in history: $history_id - USING THIS"
                 previous_history_id="$history_id"
                 break
             fi
@@ -121,14 +131,18 @@ get_previous_deployment() {
     
     # If no successful deployment found in metadata, fall back to penultimate deployment
     if [[ -z "$previous_history_id" ]]; then
-        log_debug "No successful deployment found in metadata, using penultimate deployment from history"
+        log_debug "DEBUG: No successful deployment found in metadata, using penultimate deployment from history"
         # Skip the first entry (current/most recent) and get the second entry (penultimate)
         previous_history_id=$(echo "$history_output" | awk 'NR==2 {print $1}' | grep -E '^[0-9]+$' || echo "")
+        log_debug "DEBUG: Penultimate entry (NR==2): '$previous_history_id'"
         
         # If second entry is empty, try third entry as fallback
         if [[ -z "$previous_history_id" ]]; then
             previous_history_id=$(echo "$history_output" | awk 'NR==3 {print $1}' | grep -E '^[0-9]+$' || echo "")
+            log_debug "DEBUG: Third entry fallback (NR==3): '$previous_history_id'"
         fi
+        
+        log_debug "DEBUG: Final penultimate selection: '$previous_history_id'"
     fi
     
     if [[ -z "$previous_history_id" ]]; then
