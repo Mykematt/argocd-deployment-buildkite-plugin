@@ -217,8 +217,8 @@ execute_argocd_sync() {
     } >> "$log_file"
     
     set +e
-    argocd app sync "$app_name" --timeout "$timeout" 2>&1 | tee -a "$log_file"
-    local sync_exit_code=${PIPESTATUS[0]}
+    argocd app sync "$app_name" --timeout "$timeout" >> "$log_file" 2>&1
+    local sync_exit_code=$?
     set -e
     
     echo "Exit code: $sync_exit_code" >> "$log_file"
@@ -248,8 +248,8 @@ execute_argocd_rollback() {
     } >> "$log_file"
     
     set +e
-    argocd app rollback "$app_name" "$history_id" --timeout "$timeout" 2>&1 | tee -a "$log_file"
-    local rollback_exit_code=${PIPESTATUS[0]}
+    argocd app rollback "$app_name" "$history_id" --timeout "$timeout" >> "$log_file" 2>&1
+    local rollback_exit_code=$?
     set -e
     
     echo "Exit code: $rollback_exit_code" >> "$log_file"
@@ -278,8 +278,8 @@ wait_for_argocd_operation() {
     } >> "$log_file"
     
     set +e
-    argocd app wait "$app_name" --health --timeout "$timeout" 2>&1 | tee -a "$log_file"
-    local wait_exit_code=${PIPESTATUS[0]}
+    argocd app wait "$app_name" --health --timeout "$timeout" >> "$log_file" 2>&1
+    local wait_exit_code=$?
     set -e
     
     echo "Exit code: $wait_exit_code" >> "$log_file"
@@ -307,8 +307,8 @@ disable_auto_sync() {
     } >> "$log_file"
     
     set +e
-    argocd app set "$app_name" --sync-policy manual 2>&1 | tee -a "$log_file"
-    local disable_exit_code=${PIPESTATUS[0]}
+    argocd app set "$app_name" --sync-policy manual >> "$log_file" 2>&1
+    local disable_exit_code=$?
     set -e
     
     echo "Exit code: $disable_exit_code" >> "$log_file"
@@ -335,8 +335,8 @@ enable_auto_sync() {
     } >> "$log_file"
     
     set +e
-    argocd app set "$app_name" --sync-policy automated 2>&1 | tee -a "$log_file"
-    local enable_exit_code=${PIPESTATUS[0]}
+    argocd app set "$app_name" --sync-policy automated >> "$log_file" 2>&1
+    local enable_exit_code=$?
     set -e
     
     echo "Exit code: $enable_exit_code" >> "$log_file"
